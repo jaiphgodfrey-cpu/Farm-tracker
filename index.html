@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d1512">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Japhe Farm">
+<title>Japhe Farm — Onion Tracker</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%230d1512'/%3E%3Cellipse cx='50' cy='58' rx='26' ry='30' fill='%234fae68'/%3E%3Cpath d='M50 28 L50 12 M42 20 L50 12 L58 20' stroke='%23eef2ea' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --bg-primary:#0d1512;
+    --bg-surface:#141f19;
+    --bg-elevated:#1c2b22;
+    --text-primary:#eef2ea;
+    --text-secondary:#93a99c;
+    --text-muted:#5c7266;
+    --accent:#4fae68;
+    --accent-dark:#173325;
+    --accent-sage:#7a9c85;
+    --accent-dim:rgba(79,174,104,0.16);
+    --status-success:#4fae68;
+    --status-warning:#e0a83f;
+    --status-danger:#d1603f;
+    --border-subtle:#22302a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg-primary);color:var(--text-primary);}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh;
+  }
+  .mono{font-family:"SFMono-Regular",ui-monospace,Menlo,Consolas,"Roboto Mono",monospace;}
+  #root{max-width:480px;margin:0 auto;min-height:100vh;position:relative;}
+
+  .header{padding:20px 20px 4px;}
+  .header .farmrow{display:flex; align-items:center; justify-content:space-between;}
+  .header .farmname{font-size:17px; font-weight:700;}
+  .header .date{font-size:12px; color:var(--text-secondary); margin-top:2px;}
+  .badge{
+    font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+    background:var(--accent-dim);color:var(--accent);
+    padding:4px 9px;border-radius:20px;
+  }
+
+  .home-wrap{ height:calc(100dvh - 76px); display:flex; flex-direction:column; overflow:hidden; }
+  .home-body{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; padding-bottom:calc(4px + env(safe-area-inset-bottom)); }
+
+  .hero{
+    margin:10px 16px 0; background:var(--accent-dark); border-radius:22px;
+    padding:20px 20px; position:relative; overflow:hidden; flex-shrink:0;
+    display:flex; align-items:center; gap:16px; border:1px solid var(--border-subtle);
+  }
+  .hero::before{content:""; position:absolute; right:-30px; top:-30px; width:150px; height:150px; border-radius:50%; border:22px solid rgba(255,255,255,0.04);}
+  .hero::after{content:""; position:absolute; right:18px; bottom:-40px; width:90px; height:90px; border-radius:50%; border:16px solid rgba(255,255,255,0.04);}
+  .hero-ring-wrap{position:relative; width:78px; height:78px; flex-shrink:0;}
+  .hero-num{font-size:36px; font-weight:800; color:#fff; line-height:1;}
+  .hero-label{font-size:11px; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:0.06em; margin-top:4px;}
+  .hero-sub{font-size:13.5px; color:rgba(255,255,255,0.8); margin-top:7px;}
+
+  .attention-group{ flex:1; min-height:0; display:flex; flex-direction:column; padding:0 0 6px; }
+  .section-label.tight{ margin:12px 0 7px; flex-shrink:0; }
+  .card-list.tight{ flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; }
+  .card-list.tight > .event-card{ flex:1; min-height:0; padding:9px 14px; }
+  .card-list.tight .ring-wrap{ width:42px; height:42px; }
+  .card-list.tight .ring-num{ font-size:13px; }
+  .card-list.tight .ev-name{ font-size:13.5px; }
+  .card-list.tight .ev-sub{ font-size:11.5px; }
+  .card-list.tight.one{ flex:0 0 auto; }
+  .card-list.tight.one > .event-card{ flex:0 0 auto; padding:12px 16px; }
+  .card-list.tight.one .ring-wrap{ width:48px; height:48px; }
+
+  .hero-text{ min-width:0; flex:1; }
+  .health-pill{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px; vertical-align:middle; }
+  .health-pill .dot{ width:6px; height:6px; border-radius:50%; }
+  .health-pill.ok{ background:rgba(79,174,104,0.2); color:#8fe0a4; }
+  .health-pill.ok .dot{ background:#8fe0a4; }
+  .health-pill.warn{ background:rgba(224,168,63,0.2); color:#f0c675; }
+  .health-pill.warn .dot{ background:#f0c675; }
+  .health-pill.danger{ background:rgba(209,96,63,0.2); color:#f0a17f; }
+  .health-pill.danger .dot{ background:#f0a17f; }
+  .health-pill.neutral{ background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.65); }
+  .health-pill.neutral .dot{ background:rgba(255,255,255,0.65); }
+
+  .obs-card{
+    margin:0 16px; background:var(--bg-surface); border:1px solid var(--border-subtle);
+    border-radius:16px; padding:12px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0;
+  }
+  .obs-card .ev-mid{ min-width:0; flex:1; }
+  .obs-card .ev-sub{ font-size:11.5px; color:var(--text-secondary); margin-top:3px; }
+  .obs-text{ font-size:13px; font-style:italic; line-height:1.35; color:var(--text-primary); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .empty-state.compact{ margin:10px 20px 0; padding:14px 16px; font-size:12.5px; flex-shrink:0; }
+
+  .section-label{
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--text-muted); padding:0 20px; margin:22px 0 10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+
+  .card-list{padding:0 16px; display:flex; flex-direction:column; gap:10px;}
+  .event-card{
+    background:var(--bg-surface); border:1px solid var(--border-subtle);
+    border-radius:16px; padding:14px 16px;
+    display:flex; align-items:center; gap:14px;
+  }
+  .event-card.placeholder{ border-style:dashed; opacity:0.75; }
+  .ring-wrap{position:relative; width:52px; height:52px; flex-shrink:0;}
+  .ring-wrap svg{transform:rotate(-90deg);}
+  .ring-num{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700;}
+  .ring-num.neutral{ color:var(--accent-sage); }
+  .event-card .ev-mid{min-width:0; flex:1;}
+  .event-card .ev-name{font-size:14.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .event-card .ev-sub{font-size:12px; color:var(--text-secondary); margin-top:2px;}
+  .event-card .ev-obs{font-size:11.5px; color:var(--text-muted); margin-top:3px; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .ok{color:var(--status-success);}
+  .warn{color:var(--status-warning);}
+  .danger{color:var(--status-danger);}
+
+  .timeline{padding:6px 20px 0; display:flex; gap:0; overflow-x:auto; -webkit-overflow-scrolling:touch; flex-shrink:0;}
+  .timeline::-webkit-scrollbar{display:none;}
+  .tl-item{flex-shrink:0; width:98px; display:flex; flex-direction:column; align-items:flex-start; position:relative; padding-right:12px;}
+  .tl-dot{width:8px; height:8px; border-radius:50%; background:var(--accent-sage); margin-bottom:6px;}
+  .tl-line{position:absolute; top:3px; left:8px; width:100%; height:1px; background:var(--border-subtle);}
+  .tl-name{font-size:11.5px; font-weight:600; color:var(--text-primary); line-height:1.25;}
+  .tl-date{font-size:10px; color:var(--text-muted); margin-top:2px;}
+
+  .empty-state{margin:20px 20px 0; text-align:center; color:var(--text-secondary); font-size:13.5px; line-height:1.6; background:var(--bg-surface); border:1px dashed var(--border-subtle); border-radius:16px; padding:24px 16px;}
+
+  .timeline-vertical{ margin:0 16px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:16px; padding:16px; }
+  .tlv-item{ display:flex; gap:12px; }
+  .tlv-marker{ display:flex; flex-direction:column; align-items:center; }
+  .tlv-dot{ width:9px; height:9px; border-radius:50%; background:var(--accent-sage); flex-shrink:0; margin-top:4px; }
+  .tlv-line{ width:1px; flex:1; background:var(--border-subtle); margin-top:4px; min-height:22px; }
+  .tlv-content{ padding-bottom:16px; min-width:0; }
+  .tlv-name{ font-size:13.5px; font-weight:700; }
+  .tlv-date{ font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+  .empty-state .big{font-size:30px; margin-bottom:8px;}
+
+  .bottom-nav{
+    position:fixed; bottom:0; left:0; right:0;
+    background:rgba(20,31,25,0.92); backdrop-filter:blur(10px);
+    border-top:1px solid var(--border-subtle);
+    display:flex; justify-content:center;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .bottom-nav-inner{max-width:480px; width:100%; display:flex;}
+  .nav-btn{flex:1; background:none; border:none; padding:12px 0 10px; display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--text-muted); font-size:11px; font-weight:600;}
+  .nav-btn.active{color:var(--accent);}
+
+  .settings-block{margin:0 20px 24px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:16px; padding:16px;}
+  .settings-block h3{margin:0 0 12px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);}
+  .field{margin-bottom:14px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:block; font-size:12px; color:var(--text-secondary); margin-bottom:6px;}
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--bg-elevated); border:1px solid var(--border-subtle);
+    border-radius:10px; padding:11px 12px; color:var(--text-primary); font-size:15px; font-family:inherit;
+  }
+  .field textarea{resize:vertical; min-height:56px;}
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none; border-color:var(--accent);}
+  .field select:disabled{color:var(--text-muted);}
+  .hint{font-size:11px; color:var(--text-muted); margin-top:6px;}
+
+  .settings-event-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-subtle);}
+  .settings-event-row:last-child{border-bottom:none;}
+  .settings-event-row .info .name{font-size:14px; font-weight:700;}
+  .settings-event-row .info .date{font-size:12px; color:var(--text-secondary); margin-top:2px;}
+  .settings-event-row .info .obs{font-size:11.5px; color:var(--text-muted); margin-top:2px; font-style:italic;}
+  .obs{font-size:12.5px; color:var(--text-secondary); font-style:italic; line-height:1.4;}
+  .row-actions{display:flex; gap:8px; flex-shrink:0;}
+  .icon-btn{background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:8px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--text-secondary);}
+  .icon-btn.danger-btn{color:var(--status-danger);}
+  .tag-pill{font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:20px; margin-left:8px; vertical-align:middle;}
+  .tag-pill.attn{background:var(--accent-dim); color:var(--accent);}
+  .tag-pill.mile{background:var(--bg-elevated); color:var(--text-muted); border:1px solid var(--border-subtle);}
+
+  .add-btn{width:100%; background:var(--accent-dim); color:var(--accent); border:1px dashed var(--accent); border-radius:10px; padding:12px; font-size:14px; font-weight:700; margin-top:14px;}
+
+  .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:50; display:flex; align-items:flex-end; justify-content:center;}
+  .modal{background:var(--bg-surface); width:100%; max-width:480px; border-radius:20px 20px 0 0; padding:20px 20px calc(20px + env(safe-area-inset-bottom)); max-height:85vh; overflow-y:auto; border:1px solid var(--border-subtle); border-bottom:none;}
+  .modal h2{margin:0 0 16px; font-size:17px; font-weight:800;}
+  .modal-actions{display:flex; gap:10px; margin-top:18px;}
+  .btn{flex:1; border-radius:10px; padding:13px; font-size:15px; font-weight:700; border:none;}
+  .btn-primary{background:var(--accent); color:#0d1512;}
+  .btn-secondary{background:var(--bg-elevated); color:var(--text-secondary); border:1px solid var(--border-subtle);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script>
+const e = React.createElement;
+const useState = React.useState;
+const useEffect = React.useEffect;
+const useMemo = React.useMemo;
+
+const STORAGE_KEY = "japhe_farm_v1";
+
+// kind: "milestone" = one-time crop-stage marker (Season timeline).
+// kind: "attention" = recurring action worth checking regularly.
+const CATEGORIES = [
+  { id: "nursery",    label: "Nursery preparation",       kind: "milestone" },
+  { id: "sowing",     label: "Sowing",                     kind: "milestone" },
+  { id: "land_prep",  label: "Land preparation",           kind: "milestone" },
+  { id: "fertilizer", label: "Fertilizer application",     kind: "attention" },
+  { id: "spray",      label: "Spraying (pest/disease)",    kind: "attention" },
+  { id: "weeding",    label: "Weeding",                     kind: "attention" },
+  { id: "mulch",      label: "Mulching / removing mulch",  kind: "attention" },
+  { id: "irrigation", label: "Irrigation / watering",      kind: "attention" },
+  { id: "harvest",    label: "Harvest",                     kind: "milestone" },
+  { id: "custom",     label: "Custom",                      kind: "attention" }
+];
+
+// Priority order for "Needs your attention" — most important first. The section fills with
+// whichever of these already have data, skipping any not logged yet instead of showing a blank slot.
+const FULL_PRIORITY = ["fertilizer", "spray", "weeding", "irrigation", "mulch", "custom"];
+const TOP_N = 4;
+
+const SPRAY_TYPES = ["Insecticide", "Fungicide", "Herbicide", "Other"];
+
+// Observation form options — all optional at entry. Objective (measurable) fields are kept
+// separate from subjective (perception) fields so it's clear which is which later on.
+const OBS_STAGE_OPTIONS = ["Germination & establishment", "Vegetative growth", "Bulb development", "Maturation", "Ready for harvest check"];
+const OBS_MOISTURE_OPTIONS = ["Wet", "Moist", "Dry"];
+const OBS_LEAF_COLOR_OPTIONS = ["Dark green", "Green", "Light green", "Yellowing"];
+const OBS_PEST_OPTIONS = ["None seen", "Thrips", "Cutworms", "Other"];
+const OBS_DISEASE_OPTIONS = ["None seen", "Spots", "Rot", "Wilting"];
+
+function categoryMeta(id){
+  return CATEGORIES.find(function(c){ return c.id === id; }) || { id:id, label:id, kind:"attention" };
+}
+function categoryLabel(id){ return categoryMeta(id).label; }
+
+function seedData(){
+  return {
+    farm: { name: "Japhe Farm", cropType: "onion" },
+    events: [
+      { id: "e1", categoryId: "nursery",    date: "2026-06-19" },
+      { id: "e2", categoryId: "sowing",     date: "2026-06-23" },
+      { id: "e3", categoryId: "land_prep",  date: "2026-06-27" },
+      { id: "e4", categoryId: "mulch",      date: "2026-07-13" },
+      { id: "e5", categoryId: "weeding",    date: "2026-07-14" },
+      { id: "e6", categoryId: "fertilizer", date: "2026-07-16" }
+    ],
+    observations: []
+  };
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return seedData();
+    const parsed = JSON.parse(raw);
+    if(!parsed || !parsed.farm || !parsed.events) return seedData();
+    if(!parsed.observations) parsed.observations = []; // migrate saves from before Observations existed
+    return parsed;
+  }catch(err){ return seedData(); }
+}
+function saveState(state){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(err){} }
+
+function todayISO(){
+  const d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function daysSince(dateStr){
+  const start = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  const startMid = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((nowMid - startMid) / 86400000);
+}
+function formatDateDisplay(dateStr){
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
+}
+function urgencyClass(days){ if(days >= 30) return "danger"; if(days >= 14) return "warn"; return "ok"; }
+function urgencyColorVar(days){ if(days >= 30) return "var(--status-danger)"; if(days >= 14) return "var(--status-warning)"; return "var(--status-success)"; }
+function ordinalLabel(n){ if(n===1) return "1st"; if(n===2) return "2nd"; if(n===3) return "3rd"; return n+"th"; }
+function relativeLabel(days){
+  if(days === 0) return "Today";
+  if(days === 1) return "Yesterday";
+  if(days < 0) return "Upcoming";
+  return days + " days ago";
+}
+
+function withOrdinals(events){
+  const byCat = {};
+  events.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).forEach(function(ev){
+    byCat[ev.categoryId] = (byCat[ev.categoryId] || 0) + 1;
+    ev._ordinal = byCat[ev.categoryId];
+  });
+  return events;
+}
+
+function eventDisplayName(ev){
+  const cat = categoryMeta(ev.categoryId);
+  if(ev.categoryId === "spray") return "Spraying — " + (ev.sprayType || "Insecticide");
+  if(ev.categoryId === "fertilizer" && ev.fertilizerType) return "Fertilizer application — " + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "");
+  if(ev.label) return ev.label;
+  return cat.label;
+}
+
+// Imperative phrasing for the Next Action cards — "what to do", not "what was logged".
+const ACTION_VERB = {
+  fertilizer: "Apply fertilizer",
+  spray: "Spray",
+  weeding: "Weed the field",
+  mulch: "Manage mulch",
+  irrigation: "Water the crop",
+  custom: "Custom activity"
+};
+function nextActionTitle(ev){
+  if(ev.categoryId === "fertilizer"){
+    const detail = ev.fertilizerType ? (" — " + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "")) : "";
+    return "Apply fertilizer" + detail;
+  }
+  if(ev.categoryId === "spray") return "Spray — " + (ev.sprayType || "Insecticide");
+  return ACTION_VERB[ev.categoryId] || eventDisplayName(ev);
+}
+
+function RingGauge(props){
+  const days = props.days, size = props.size || 52, stroke = props.stroke || 5, neutral = props.neutral;
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(1, days / 30));
+  const color = neutral ? "var(--accent-sage)" : urgencyColorVar(days);
+  const numClass = neutral ? "neutral" : urgencyClass(days);
+  return e("div", { className:"ring-wrap", style:{ width:size, height:size } },
+    e("svg", { width:size, height:size },
+      e("circle", { cx:size/2, cy:size/2, r:r, fill:"none", stroke:"var(--bg-elevated)", strokeWidth:stroke }),
+      e("circle", { cx:size/2, cy:size/2, r:r, fill:"none", stroke:color, strokeWidth:stroke, strokeDasharray:c, strokeDashoffset:c*(1-pct), strokeLinecap:"round" })
+    ),
+    e("div", { className:"ring-num mono " + numClass }, days < 0 ? "—" : days)
+  );
+}
+
+function TopAttentionCard(props){
+  const ev = props.ev;
+  const days = daysSince(ev.date);
+  return e("div", { className:"event-card", key: ev.id },
+    e(RingGauge, { days: days }),
+    e("div", { className:"ev-mid" },
+      e("div", { className:"ev-name" }, nextActionTitle(ev)),
+      e("div", { className:"ev-sub" }, ordinalLabel(ev._ordinal) + " time · last done " + relativeLabel(days)),
+      ev.observation ? e("div", { className:"ev-obs" }, "“" + ev.observation + "”") : null
+    )
+  );
+}
+
+function TimelineItem(ev){
+  const days = daysSince(ev.date);
+  return e("div", { className:"tl-item", key: ev.id },
+    e("div", { className:"tl-line" }), e("div", { className:"tl-dot" }),
+    e("div", { className:"tl-name" }, eventDisplayName(ev)),
+    e("div", { className:"tl-date" }, relativeLabel(days))
+  );
+}
+
+const STAGES = [
+  { max: 15, label: "Germination & establishment" },
+  { max: 40, label: "Vegetative growth" },
+  { max: 70, label: "Bulb development" },
+  { max: 100, label: "Maturation" },
+  { max: Infinity, label: "Ready for harvest check" }
+];
+function stageForDays(days){
+  for(var i = 0; i < STAGES.length; i++){ if(days <= STAGES[i].max) return STAGES[i].label; }
+  return STAGES[STAGES.length-1].label;
+}
+
+function healthStatus(latestByCat){
+  const cats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
+  if(cats.length === 0) return { label: "Not enough data yet", cls: "neutral" };
+  let worst = "ok";
+  cats.forEach(function(id){
+    const uc = urgencyClass(daysSince(latestByCat[id].date));
+    if(uc === "danger") worst = "danger";
+    else if(uc === "warn" && worst !== "danger") worst = "warn";
+  });
+  if(worst === "danger") return { label: "Needs attention", cls: "danger" };
+  if(worst === "warn") return { label: "Keep an eye", cls: "warn" };
+  return { label: "On track", cls: "ok" };
+}
+
+function computeNextAction(latestByCat){
+  const cats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
+  if(cats.length === 0) return null;
+  let best = null;
+  cats.forEach(function(id){
+    const ev = latestByCat[id];
+    const uc = urgencyClass(daysSince(ev.date));
+    const score = uc === "danger" ? 2 : uc === "warn" ? 1 : 0;
+    if(!best || score > best.score){ best = { catId:id, ev:ev, score:score }; }
+  });
+  return best;
+}
+
+function observationSummaryText(o){
+  if(o.notes && o.notes.trim()) return o.notes.trim();
+  const parts = [];
+  if(o.observedStage) parts.push(o.observedStage);
+  if(o.leafCount != null && o.leafCount !== "") parts.push(o.leafCount + " leaves");
+  if(o.heightCm != null && o.heightCm !== "") parts.push(o.heightCm + "cm");
+  if(o.soilMoisture) parts.push("Soil: " + o.soilMoisture);
+  if(o.leafColor) parts.push("Leaf: " + o.leafColor);
+  if(o.pestPresence && o.pestPresence !== "None seen") parts.push("Pest: " + o.pestPresence);
+  if(o.diseaseSymptoms && o.diseaseSymptoms !== "None seen") parts.push("Disease: " + o.diseaseSymptoms);
+  return parts.length ? parts.join(" · ") : "Field check logged";
+}
+
+// Merges the quick observation notes on fertilizer/spray events with the dedicated
+// Observation log, and returns whichever is most recent, in one shared shape.
+function latestFieldNote(state){
+  const items = [];
+  state.events.forEach(function(ev){
+    if(ev.observation && ev.observation.trim()){
+      items.push({ date: ev.date, text: ev.observation.trim(), source: eventDisplayName(ev) });
+    }
+  });
+  (state.observations || []).forEach(function(o){
+    items.push({ date: o.date, text: observationSummaryText(o), source: "Field observation" });
+  });
+  if(items.length === 0) return null;
+  return items.sort(function(a,b){ return b.date.localeCompare(a.date); })[0];
+}
+
+function HomeScreen(state){
+  const withOrd = useMemo(function(){ return withOrdinals(state.events.slice()); }, [state.events]);
+
+  const sowingEvent = useMemo(function(){
+    const sowings = state.events.filter(function(ev){ return ev.categoryId === "sowing"; });
+    if(sowings.length === 0) return null;
+    return sowings.slice().sort(function(a,b){ return a.date.localeCompare(b.date); })[0];
+  }, [state.events]);
+
+  const latestByCat = useMemo(function(){
+    const map = {};
+    withOrd.forEach(function(ev){
+      if(!map[ev.categoryId] || ev.date > map[ev.categoryId].date) map[ev.categoryId] = ev;
+    });
+    return map;
+  }, [withOrd]);
+
+  const cropAge = sowingEvent ? daysSince(sowingEvent.date) : null;
+  const nextActionCats = useMemo(function(){
+    return FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; }).slice(0, 3);
+  }, [latestByCat]);
+  const note = useMemo(function(){ return latestFieldNote(state); }, [state.events, state.observations]);
+  const hasAnyEvents = state.events.length > 0;
+
+  return e("div", { className:"home-wrap" },
+    e("div", { className:"header" },
+      e("div", { className:"farmrow" },
+        e("div", null,
+          e("div", { className:"farmname" }, state.farm.name || "My Farm"),
+          e("div", { className:"date" }, new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long" }))
+        ),
+        e("span", { className:"badge" }, state.farm.cropType === "onion" ? "Onion" : state.farm.cropType)
+      )
+    ),
+
+    e("div", { className:"home-body" },
+
+      // How is the crop doing? — hero panel: age and growth stage.
+      e("div", { className:"hero" },
+        e("div", { className:"hero-ring-wrap" }, e(RingHero, { days: cropAge === null ? 0 : cropAge })),
+        e("div", { className:"hero-text" },
+          cropAge === null
+            ? e("div", { className:"hero-sub" }, "Log a sowing date in Settings to start tracking.")
+            : e(React.Fragment, null,
+                e("div", { className:"hero-num mono" }, cropAge),
+                e("div", { className:"hero-label" }, cropAge === 1 ? "day since sowing" : "days since sowing"),
+                e("div", { className:"hero-sub" }, stageForDays(cropAge))
+              )
+        )
+      ),
+
+      // What must I do now? — up to three tracked activities, most important first.
+      e("div", { className:"section-label tight" }, "Next action"),
+      !hasAnyEvents || nextActionCats.length === 0
+        ? e("div", { className:"empty-state compact" }, e("div", null, "Add fertilizer, spraying, or weeding from Settings."))
+        : e("div", { className:"card-list tight" }, nextActionCats.map(function(catId){
+            return e(TopAttentionCard, { key: catId, ev: latestByCat[catId] });
+          })),
+
+      // What changed recently? — the newest field note.
+      e("div", { className:"section-label tight" }, "Latest observation"),
+      !note
+        ? e("div", { className:"empty-state compact" }, e("div", null, "No observations logged yet."))
+        : e("div", { className:"obs-card" },
+            e(RingGauge, { days: daysSince(note.date), size:42, stroke:5 }),
+            e("div", { className:"ev-mid" },
+              e("div", { className:"obs-text" }, "“" + note.text + "”"),
+              e("div", { className:"ev-sub" }, note.source + " · " + relativeLabel(daysSince(note.date)))
+            )
+          )
+    )
+  );
+}
+
+function RingHero(props){
+  const days = props.days, size = 78, stroke = 7;
+  const r = (size-stroke)/2, c = 2*Math.PI*r;
+  const pct = Math.max(0.06, Math.min(1, days/90));
+  return e("svg", { width:size, height:size, style:{ transform:"rotate(-90deg)" } },
+    e("circle", { cx:size/2, cy:size/2, r:r, fill:"none", stroke:"rgba(255,255,255,0.12)", strokeWidth:stroke }),
+    e("circle", { cx:size/2, cy:size/2, r:r, fill:"none", stroke:"#fff", strokeWidth:stroke, strokeDasharray:c, strokeDashoffset:c*(1-pct), strokeLinecap:"round" })
+  );
+}
+
+function IconHome(active){
+  const c = active ? "var(--accent)" : "var(--text-muted)";
+  return e("svg", {width:20,height:20,viewBox:"0 0 24 24",fill:"none"},
+    e("path", {d:"M3 11.5L12 4l9 7.5", stroke:c, strokeWidth:2, strokeLinecap:"round", strokeLinejoin:"round"}),
+    e("path", {d:"M5.5 10v9a1 1 0 001 1H9a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h2.5a1 1 0 001-1v-9", stroke:c, strokeWidth:2, strokeLinecap:"round", strokeLinejoin:"round"})
+  );
+}
+function IconSettings(active){
+  const c = active ? "var(--accent)" : "var(--text-muted)";
+  return e("svg", {width:20,height:20,viewBox:"0 0 24 24",fill:"none"},
+    e("circle", {cx:12, cy:12, r:3, stroke:c, strokeWidth:2}),
+    e("path", {d:"M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z", stroke:c, strokeWidth:1.6, strokeLinejoin:"round"})
+  );
+}
+function IconHistory(active){
+  const c = active ? "var(--accent)" : "var(--text-muted)";
+  return e("svg", {width:20,height:20,viewBox:"0 0 24 24",fill:"none"},
+    e("circle", {cx:12, cy:12, r:9, stroke:c, strokeWidth:2}),
+    e("path", {d:"M12 7v5l3.5 2", stroke:c, strokeWidth:2, strokeLinecap:"round", strokeLinejoin:"round"})
+  );
+}
+
+
+
+function TimelineVerticalItem(props){
+  const ev = props.ev, isLast = props.isLast;
+  return e("div", { className:"tlv-item", key: ev.id },
+    e("div", { className:"tlv-marker" }, e("div", { className:"tlv-dot" }), !isLast && e("div", { className:"tlv-line" })),
+    e("div", { className:"tlv-content" },
+      e("div", { className:"tlv-name" }, eventDisplayName(ev)),
+      e("div", { className:"tlv-date" }, relativeLabel(daysSince(ev.date)) + " · " + formatDateDisplay(ev.date))
+    )
+  );
+}
+
+function ActivityDetailSheet(props){
+  const cat = props.cat, ev = props.ev, onClose = props.onClose, onEdit = props.onEdit, onDelete = props.onDelete, onQuickAdd = props.onQuickAdd;
+  return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, cat.label),
+      !ev
+        ? e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Not logged yet.")
+        : e("div", { style:{ marginBottom:"14px" } },
+            e("div", { style:{ fontSize:"15px", fontWeight:700, marginBottom:"4px" } }, eventDisplayName(ev)),
+            e("div", { className:"hint" }, ordinalLabel(ev._ordinal) + " time · " + relativeLabel(daysSince(ev.date)) + " · " + formatDateDisplay(ev.date)),
+            ev.observation && e("div", { className:"obs", style:{ marginTop:"8px" } }, "“" + ev.observation + "”")
+          ),
+      e("div", { className:"modal-actions" },
+        ev
+          ? e(React.Fragment, null,
+              e("button", { className:"btn btn-secondary", onClick: function(){ onEdit(ev); } }, "Edit"),
+              e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ onDelete(ev.id); } }, "Delete")
+            )
+          : e("button", { className:"btn btn-primary", onClick: function(){ onQuickAdd(cat.id); } }, "+ Add " + cat.label)
+      )
+    )
+  );
+}
+
+function ObservationDetailSheet(props){
+  const o = props.obs, onClose = props.onClose, onEdit = props.onEdit, onDelete = props.onDelete;
+  const rows = [
+    ["Growth stage", o.observedStage],
+    ["Leaf count", o.leafCount != null ? o.leafCount : null],
+    ["Plant height", o.heightCm != null ? o.heightCm + " cm" : null],
+    ["Soil moisture", o.soilMoisture],
+    ["Leaf colour", o.leafColor],
+    ["Pests seen", o.pestPresence],
+    ["Disease symptoms", o.diseaseSymptoms]
+  ].filter(function(r){ return r[1]; });
+  return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, "Field observation"),
+      e("div", { className:"hint", style:{ marginBottom:"12px" } }, relativeLabel(daysSince(o.date)) + " · " + formatDateDisplay(o.date)),
+      rows.length > 0 && e("div", { style:{ marginBottom:"12px" } }, rows.map(function(r){
+        return e("div", { key:r[0], style:{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid var(--border-subtle)", fontSize:"13.5px" } },
+          e("span", { style:{ color:"var(--text-secondary)" } }, r[0]), e("span", { style:{ fontWeight:600 } }, r[1])
+        );
+      })),
+      o.notes && e("div", { className:"obs", style:{ marginBottom:"14px" } }, "“" + o.notes + "”"),
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-secondary", onClick: function(){ onEdit(o); } }, "Edit"),
+        e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ onDelete(o.id); } }, "Delete")
+      )
+    )
+  );
+}
+
+function ActivityRow(props){
+  const cat = props.cat, ev = props.ev, onOpen = props.onOpen;
+  const isMilestone = categoryMeta(cat.id).kind === "milestone";
+  const days = ev ? daysSince(ev.date) : null;
+  return e("div", { className:"event-card" + (!ev ? " placeholder" : ""), key: cat.id, onDoubleClick: function(){ onOpen(cat, ev); } },
+    ev
+      ? e(RingGauge, { days: days, neutral: isMilestone })
+      : e("div", { className:"ring-wrap" },
+          e("svg", { width:52, height:52 }, e("circle", { cx:26, cy:26, r:23, fill:"none", stroke:"var(--bg-elevated)", strokeWidth:5, strokeDasharray:"4 4" })),
+          e("div", { className:"ring-num neutral" }, "–")
+        ),
+    e("div", { className:"ev-mid" },
+      e("div", { className:"ev-name" }, cat.label),
+      e("div", { className:"ev-sub" }, ev ? relativeLabel(days) : "Not logged yet · double-tap to add")
+    )
+  );
+}
+
+function HistoryScreen(props){
+  const state = props;
+  const onEditEvent = props.onEditEvent, onDeleteEvent = props.onDeleteEvent, onQuickAdd = props.onQuickAdd;
+  const onEditObservation = props.onEditObservation, onDeleteObservation = props.onDeleteObservation;
+  const [detail, setDetail] = useState(null);
+  const [obsDetail, setObsDetail] = useState(null);
+
+  const withOrd = useMemo(function(){ return withOrdinals(state.events.slice()); }, [state.events]);
+
+  const milestones = useMemo(function(){
+    return withOrd.filter(function(ev){ return categoryMeta(ev.categoryId).kind === "milestone"; })
+      .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  }, [withOrd]);
+
+  const latestByCat = useMemo(function(){
+    const map = {};
+    withOrd.forEach(function(ev){
+      if(!map[ev.categoryId] || ev.date > map[ev.categoryId].date) map[ev.categoryId] = ev;
+    });
+    return map;
+  }, [withOrd]);
+
+  return e("div", { style:{ paddingBottom:"76px" } },
+    e("div", { className:"header" }, e("div", { className:"farmname" }, "History")),
+
+    e("div", { className:"section-label" }, "All activities"),
+    e("div", { className:"hint", style:{ margin:"0 20px 10px" } }, "Double-tap any activity for full details, editing, or delete."),
+    e("div", { className:"card-list" }, CATEGORIES.map(function(cat){
+      return e(ActivityRow, { key: cat.id, cat: cat, ev: latestByCat[cat.id] || null, onOpen: function(c, ev){ setDetail({ cat: c, ev: ev }); } });
+    })),
+
+    e("div", { className:"section-label" }, "Season timeline"),
+    milestones.length === 0
+      ? e("div", { className:"empty-state" }, e("div", null, "No milestones logged yet.") )
+      : e("div", { className:"timeline-vertical" }, milestones.map(function(ev, i){
+          return e(TimelineVerticalItem, { key: ev.id, ev: ev, isLast: i === milestones.length - 1 });
+        })),
+
+    e("div", { className:"section-label" }, "Field observations"),
+    (function(){
+      const sortedObs = (state.observations || []).slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+      return sortedObs.length === 0
+        ? e("div", { className:"empty-state" }, e("div", null, "No observations logged yet.") )
+        : e("div", { className:"card-list" }, sortedObs.map(function(o){
+            const days = daysSince(o.date);
+            return e("div", { className:"event-card", key: o.id, onDoubleClick: function(){ setObsDetail(o); } },
+              e(RingGauge, { days: days, neutral: true }),
+              e("div", { className:"ev-mid" },
+                e("div", { className:"ev-name" }, observationSummaryText(o)),
+                e("div", { className:"ev-sub" }, relativeLabel(days))
+              )
+            );
+          }));
+    })(),
+
+    detail && e(ActivityDetailSheet, {
+      cat: detail.cat, ev: detail.ev,
+      onClose: function(){ setDetail(null); },
+      onEdit: function(ev){ setDetail(null); onEditEvent(ev); },
+      onDelete: function(id){ setDetail(null); onDeleteEvent(id); },
+      onQuickAdd: function(catId){ setDetail(null); onQuickAdd(catId); }
+    }),
+
+    obsDetail && e(ObservationDetailSheet, {
+      obs: obsDetail,
+      onClose: function(){ setObsDetail(null); },
+      onEdit: function(o){ setObsDetail(null); onEditObservation(o); },
+      onDelete: function(id){ setObsDetail(null); onDeleteObservation(id); }
+    })
+  );
+}
+
+function OptionalSelect(props){
+  return e("div", { className:"field" },
+    e("label", null, props.label),
+    e("select", { value: props.value, onChange: function(ev){ props.onChange(ev.target.value); } },
+      e("option", { value:"" }, "— Not observed —"),
+      props.options.map(function(o){ return e("option", { value:o, key:o }, o); })
+    )
+  );
+}
+
+function SettingsScreen(props){
+  const state = props.state;
+  const onUpdateFarm = props.onUpdateFarm, onOpenAddEvent = props.onOpenAddEvent, onOpenAddObservation = props.onOpenAddObservation;
+
+  const [farmName, setFarmName] = useState(state.farm.name);
+  useEffect(function(){ setFarmName(state.farm.name); }, [state.farm.name]);
+  function commitFarmName(){ if(farmName.trim() && farmName !== state.farm.name){ onUpdateFarm({ name: farmName.trim() }); } }
+
+  return e("div", { style:{ paddingBottom:"76px" } },
+    e("div", { className:"header" }, e("div", { className:"farmname" }, "Settings")),
+    e("div", { className:"section-label" }, "Farm profile"),
+    e("div", { className:"settings-block" },
+      e("div", { className:"field" }, e("label", null, "Farm name"),
+        e("input", { value: farmName, onChange: function(ev){ setFarmName(ev.target.value); }, onBlur: commitFarmName })),
+      e("div", { className:"field" }, e("label", null, "Crop type"),
+        e("select", { value: state.farm.cropType, disabled: true }, e("option", { value:"onion" }, "Onion")),
+        e("div", { className:"hint" }, "More crops can be added here later."))
+    ),
+
+    e("div", { className:"section-label" }, "Log a new event"),
+    e("div", { className:"settings-block" },
+      e("button", { className:"add-btn", onClick: onOpenAddEvent }, "+ Add new event")
+    ),
+
+    e("div", { className:"section-label" }, "Field observations"),
+    e("div", { className:"settings-block" },
+      e("button", { className:"add-btn", onClick: onOpenAddObservation }, "+ Add observation")
+    )
+  );
+}
+
+function App(){
+  const [state, setState] = useState(loadState);
+  const [tab, setTab] = useState("home");
+  useEffect(function(){ saveState(state); }, [state]);
+  useEffect(function(){ document.body.style.overflow = tab === "home" ? "hidden" : ""; }, [tab]);
+
+  function updateFarm(patch){ setState(function(prev){ return Object.assign({}, prev, { farm: Object.assign({}, prev.farm, patch) }); }); }
+  function addEvent(ev){ setState(function(prev){ return Object.assign({}, prev, { events: prev.events.concat([ev]) }); }); }
+  function updateEvent(id, patch){
+    setState(function(prev){ return Object.assign({}, prev, { events: prev.events.map(function(ev){ return ev.id===id ? Object.assign({}, ev, patch) : ev; }) }); });
+  }
+  function deleteEvent(id){ setState(function(prev){ return Object.assign({}, prev, { events: prev.events.filter(function(ev){ return ev.id !== id; }) }); }); }
+
+  function addObservation(o){ setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).concat([o]) }); }); }
+  function updateObservation(id, patch){
+    setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).map(function(o){ return o.id===id ? Object.assign({}, o, patch) : o; }) }); });
+  }
+  function deleteObservation(id){ setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).filter(function(o){ return o.id !== id; }) }); }); }
+
+  // Event add/edit modal — shared by Settings ("+ Add new event") and History (double-tap an activity).
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formCategory, setFormCategory] = useState(CATEGORIES[0].id);
+  const [formDate, setFormDate] = useState(todayISO());
+  const [formSprayType, setFormSprayType] = useState(SPRAY_TYPES[0]);
+  const [formFertilizerType, setFormFertilizerType] = useState("");
+  const [formQuantityKg, setFormQuantityKg] = useState("");
+  const [formObservation, setFormObservation] = useState("");
+  const [formLabel, setFormLabel] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  function openAddModal(presetCategory){
+    setEditingId(null); setFormCategory(presetCategory || CATEGORIES[0].id); setFormDate(todayISO());
+    setFormSprayType(SPRAY_TYPES[0]); setFormFertilizerType(""); setFormQuantityKg("");
+    setFormObservation(""); setFormLabel(""); setModalOpen(true);
+  }
+  function openEditModal(ev){
+    setEditingId(ev.id); setFormCategory(ev.categoryId); setFormDate(ev.date);
+    setFormSprayType(ev.sprayType || SPRAY_TYPES[0]);
+    setFormFertilizerType(ev.fertilizerType || ""); setFormQuantityKg(ev.quantityKg != null ? String(ev.quantityKg) : "");
+    setFormObservation(ev.observation || ""); setFormLabel(ev.label || "");
+    setModalOpen(true);
+  }
+  const isRichCategory = formCategory === "fertilizer" || formCategory === "spray";
+  function submitForm(){
+    const base = { categoryId: formCategory, date: formDate };
+    if(formCategory === "spray"){ base.sprayType = formSprayType; base.observation = formObservation.trim() || undefined; }
+    else if(formCategory === "fertilizer"){
+      base.fertilizerType = formFertilizerType.trim() || undefined;
+      base.quantityKg = formQuantityKg.trim() ? Number(formQuantityKg) : undefined;
+      base.observation = formObservation.trim() || undefined;
+    }
+    else { base.label = formLabel.trim() || undefined; }
+
+    if(editingId){ updateEvent(editingId, base); }
+    else { addEvent(Object.assign({ id: "e" + Date.now() }, base)); }
+    setModalOpen(false);
+  }
+
+  // Observation add/edit modal — shared by Settings ("+ Add observation") and History (double-tap an observation).
+  const [obsModalOpen, setObsModalOpen] = useState(false);
+  const [obsEditingId, setObsEditingId] = useState(null);
+  const [obsDate, setObsDate] = useState(todayISO());
+  const [obsStage, setObsStage] = useState("");
+  const [obsLeafCount, setObsLeafCount] = useState("");
+  const [obsHeightCm, setObsHeightCm] = useState("");
+  const [obsMoisture, setObsMoisture] = useState("");
+  const [obsLeafColor, setObsLeafColor] = useState("");
+  const [obsPest, setObsPest] = useState("");
+  const [obsDisease, setObsDisease] = useState("");
+  const [obsNotes, setObsNotes] = useState("");
+  const [obsConfirmDeleteId, setObsConfirmDeleteId] = useState(null);
+
+  function openAddObsModal(){
+    setObsEditingId(null); setObsDate(todayISO()); setObsStage(""); setObsLeafCount(""); setObsHeightCm("");
+    setObsMoisture(""); setObsLeafColor(""); setObsPest(""); setObsDisease(""); setObsNotes(""); setObsModalOpen(true);
+  }
+  function openEditObsModal(o){
+    setObsEditingId(o.id); setObsDate(o.date); setObsStage(o.observedStage || "");
+    setObsLeafCount(o.leafCount != null ? String(o.leafCount) : ""); setObsHeightCm(o.heightCm != null ? String(o.heightCm) : "");
+    setObsMoisture(o.soilMoisture || ""); setObsLeafColor(o.leafColor || "");
+    setObsPest(o.pestPresence || ""); setObsDisease(o.diseaseSymptoms || ""); setObsNotes(o.notes || "");
+    setObsModalOpen(true);
+  }
+  function submitObsForm(){
+    const base = {
+      date: obsDate,
+      observedStage: obsStage || undefined,
+      leafCount: obsLeafCount.trim() ? Number(obsLeafCount) : undefined,
+      heightCm: obsHeightCm.trim() ? Number(obsHeightCm) : undefined,
+      soilMoisture: obsMoisture || undefined,
+      leafColor: obsLeafColor || undefined,
+      pestPresence: obsPest || undefined,
+      diseaseSymptoms: obsDisease || undefined,
+      notes: obsNotes.trim() || undefined
+    };
+    if(obsEditingId){ updateObservation(obsEditingId, base); }
+    else { addObservation(Object.assign({ id: "o" + Date.now() }, base)); }
+    setObsModalOpen(false);
+  }
+
+  return e(React.Fragment, null,
+    tab === "home" ? e(HomeScreen, state)
+      : tab === "history" ? e(HistoryScreen, Object.assign({}, state, {
+          onEditEvent: openEditModal,
+          onDeleteEvent: function(id){ setConfirmDeleteId(id); },
+          onQuickAdd: function(catId){ openAddModal(catId); },
+          onEditObservation: openEditObsModal,
+          onDeleteObservation: function(id){ setObsConfirmDeleteId(id); }
+        }))
+      : e(SettingsScreen, { state: state, onUpdateFarm: updateFarm, onOpenAddEvent: function(){ openAddModal(); },
+          onOpenAddObservation: openAddObsModal }),
+
+    modalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setModalOpen(false); } },
+      e("div", { className:"modal" },
+        e("h2", null, editingId ? "Edit event" : "Add event"),
+        e("div", { className:"field" }, e("label", null, "Event type"),
+          e("select", { value: formCategory, onChange: function(ev){ setFormCategory(ev.target.value); } },
+            CATEGORIES.map(function(c){ return e("option", { value:c.id, key:c.id }, c.label + (c.kind==="milestone" ? " (timeline)" : "")); })
+          )
+        ),
+        formCategory === "spray" && e("div", { className:"field" }, e("label", null, "Spray type"),
+          e("select", { value: formSprayType, onChange: function(ev){ setFormSprayType(ev.target.value); } },
+            SPRAY_TYPES.map(function(t){ return e("option", { value:t, key:t }, t); })
+          )
+        ),
+        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Fertilizer type"),
+          e("input", { value: formFertilizerType, placeholder: "e.g. CAN, DAP, Urea, NPK", onChange: function(ev){ setFormFertilizerType(ev.target.value); } })
+        ),
+        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Quantity (kg)"),
+          e("input", { type:"number", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
+        ),
+        e("div", { className:"field" }, e("label", null, "Date"),
+          e("input", { type:"date", value: formDate, onChange: function(ev){ setFormDate(ev.target.value); } })),
+
+        isRichCategory
+          ? e("div", { className:"field" }, e("label", null, "Observation"),
+              e("textarea", {
+                value: formObservation,
+                placeholder: formCategory === "spray" ? "e.g. thrips on leaves, north side" : "e.g. slight yellowing before application",
+                onChange: function(ev){ setFormObservation(ev.target.value); }
+              }),
+              e("div", { className:"hint" }, "What you noticed — this is worth recording every time."))
+          : e("div", { className:"field" }, e("label", null, "Note (optional)"),
+              e("input", { value: formLabel, placeholder: categoryLabel(formCategory), onChange: function(ev){ setFormLabel(ev.target.value); } })),
+
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setModalOpen(false); } }, "Cancel"),
+          e("button", { className:"btn btn-primary", onClick: submitForm }, editingId ? "Save" : "Add")
+        )
+      )
+    ),
+
+    confirmDeleteId && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setConfirmDeleteId(null); } },
+      e("div", { className:"modal" },
+        e("h2", null, "Delete this event?"),
+        e("div", { className:"hint" }, "This can't be undone."),
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setConfirmDeleteId(null); } }, "Cancel"),
+          e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ deleteEvent(confirmDeleteId); setConfirmDeleteId(null); } }, "Delete")
+        )
+      )
+    ),
+
+    obsModalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setObsModalOpen(false); } },
+      e("div", { className:"modal" },
+        e("h2", null, obsEditingId ? "Edit observation" : "Add observation"),
+        e("div", { className:"hint", style:{ marginBottom:"12px" } }, "Fill in only what you actually saw today — skip the rest."),
+        e("div", { className:"field" }, e("label", null, "Date"),
+          e("input", { type:"date", value: obsDate, onChange: function(ev){ setObsDate(ev.target.value); } })),
+        e(OptionalSelect, { label:"Growth stage", value: obsStage, onChange: setObsStage, options: OBS_STAGE_OPTIONS }),
+        e("div", { className:"field" }, e("label", null, "Leaf count (optional)"),
+          e("input", { type:"number", inputMode:"numeric", value: obsLeafCount, placeholder:"e.g. 4", onChange: function(ev){ setObsLeafCount(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "Plant height, cm (optional)"),
+          e("input", { type:"number", inputMode:"decimal", value: obsHeightCm, placeholder:"e.g. 15", onChange: function(ev){ setObsHeightCm(ev.target.value); } })),
+        e(OptionalSelect, { label:"Soil moisture", value: obsMoisture, onChange: setObsMoisture, options: OBS_MOISTURE_OPTIONS }),
+        e(OptionalSelect, { label:"Leaf colour", value: obsLeafColor, onChange: setObsLeafColor, options: OBS_LEAF_COLOR_OPTIONS }),
+        e(OptionalSelect, { label:"Pests seen", value: obsPest, onChange: setObsPest, options: OBS_PEST_OPTIONS }),
+        e(OptionalSelect, { label:"Disease symptoms", value: obsDisease, onChange: setObsDisease, options: OBS_DISEASE_OPTIONS }),
+        e("div", { className:"field" }, e("label", null, "Notes (optional)"),
+          e("textarea", { value: obsNotes, placeholder:"Anything else worth remembering", onChange: function(ev){ setObsNotes(ev.target.value); } })),
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setObsModalOpen(false); } }, "Cancel"),
+          e("button", { className:"btn btn-primary", onClick: submitObsForm }, obsEditingId ? "Save" : "Add")
+        )
+      )
+    ),
+
+    obsConfirmDeleteId && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setObsConfirmDeleteId(null); } },
+      e("div", { className:"modal" },
+        e("h2", null, "Delete this observation?"),
+        e("div", { className:"hint" }, "This can't be undone."),
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setObsConfirmDeleteId(null); } }, "Cancel"),
+          e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ deleteObservation(obsConfirmDeleteId); setObsConfirmDeleteId(null); } }, "Delete")
+        )
+      )
+    ),
+
+    e("div", { className:"bottom-nav" },
+      e("div", { className:"bottom-nav-inner" },
+        e("button", { className:"nav-btn" + (tab==="home" ? " active" : ""), onClick: function(){ setTab("home"); } }, IconHome(tab==="home"), e("span", null, "Home")),
+        e("button", { className:"nav-btn" + (tab==="history" ? " active" : ""), onClick: function(){ setTab("history"); } }, IconHistory(tab==="history"), e("span", null, "History")),
+        e("button", { className:"nav-btn" + (tab==="settings" ? " active" : ""), onClick: function(){ setTab("settings"); } }, IconSettings(tab==="settings"), e("span", null, "Settings"))
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(e(App));
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(err){
+      console.warn("Service worker registration failed:", err);
+    });
+  });
+}
+</script>
+</body>
+</html>
