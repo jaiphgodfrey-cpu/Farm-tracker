@@ -165,6 +165,21 @@
   .field select:disabled{color:var(--text-muted);}
   .hint{font-size:11px; color:var(--text-muted); margin-top:6px;}
 
+  .backup-text{
+    width:100%; min-height:180px; background:var(--bg-elevated); border:1px solid var(--border-subtle);
+    border-radius:10px; padding:12px; color:var(--text-primary); font-size:12px; line-height:1.5;
+    font-family:"SFMono-Regular",ui-monospace,Menlo,Consolas,"Roboto Mono",monospace; resize:vertical;
+  }
+  .backup-text:focus{outline:none; border-color:var(--accent);}
+
+  .data-row{
+    width:100%; background:none; border:none; border-bottom:1px solid var(--border-subtle);
+    padding:14px 2px; display:flex; align-items:center; justify-content:space-between;
+    font-size:14.5px; font-weight:600; color:var(--text-primary); text-align:left;
+  }
+  .data-row:last-child{border-bottom:none;}
+  .data-row .chev{color:var(--text-muted); font-size:18px;}
+
   .settings-event-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-subtle);}
   .settings-event-row:last-child{border-bottom:none;}
   .settings-event-row .info .name{font-size:14px; font-weight:700;}
@@ -704,10 +719,67 @@ function OptionalSelect(props){
 function SettingsScreen(props){
   const state = props.state;
   const onUpdateFarm = props.onUpdateFarm, onOpenAddEvent = props.onOpenAddEvent, onOpenAddObservation = props.onOpenAddObservation;
+  const onRestoreState = props.onRestoreState;
 
   const [farmName, setFarmName] = useState(state.farm.name);
   useEffect(function(){ setFarmName(state.farm.name); }, [state.farm.name]);
   function commitFarmName(){ if(farmName.trim() && farmName !== state.farm.name){ onUpdateFarm({ name: farmName.trim() }); } }
+
+  const [exportOpen, setExportOpen] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreText, setRestoreText] = useState("");
+  const [restoreError, setRestoreError] = useState("");
+  const [restoreConfirming, setRestoreConfirming] = useState(false);
+
+  function buildBackupText(){
+    return JSON.stringify({
+      _backup: true,
+      exportedAt: todayISO(),
+      farm: state.farm,
+      events: state.events,
+      observations: state.observations || []
+    }, null, 2);
+  }
+
+  function openExport(){ setCopyStatus(""); setExportOpen(true); }
+
+  function copyBackup(){
+    const text = buildBackupText();
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text)
+        .then(function(){ setCopyStatus("Copied."); })
+        .catch(function(){ setCopyStatus("Couldn't copy automatically — tap the text to select it, then copy."); });
+    } else {
+      setCopyStatus("Tap the text to select it, then copy.");
+    }
+  }
+
+  function openRestore(){ setRestoreText(""); setRestoreError(""); setRestoreConfirming(false); setRestoreOpen(true); }
+
+  function validateAndConfirm(){
+    try{
+      const parsed = JSON.parse(restoreText.trim());
+      if(!parsed || !parsed.farm || !Array.isArray(parsed.events)){
+        setRestoreError("That doesn't look like a valid backup — check you copied the whole thing.");
+        return;
+      }
+      setRestoreError("");
+      setRestoreConfirming(true);
+    }catch(err){
+      setRestoreError("Couldn't read that as a backup — check you copied the whole thing.");
+    }
+  }
+
+  function doRestore(){
+    const parsed = JSON.parse(restoreText.trim());
+    onRestoreState({
+      farm: parsed.farm,
+      events: parsed.events,
+      observations: Array.isArray(parsed.observations) ? parsed.observations : []
+    });
+    setRestoreOpen(false);
+  }
 
   return e("div", { style:{ paddingBottom:"76px" } },
     e("div", { className:"header" }, e("div", { className:"farmname" }, "Settings")),
@@ -728,6 +800,50 @@ function SettingsScreen(props){
     e("div", { className:"section-label" }, "Field observations"),
     e("div", { className:"settings-block" },
       e("button", { className:"add-btn", onClick: onOpenAddObservation }, "+ Add observation")
+    ),
+
+    e("div", { className:"section-label" }, "Data & backup"),
+    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
+      e("button", { className:"data-row", onClick: openExport }, e("span", null, "Export backup"), e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row", onClick: openRestore }, e("span", null, "Restore from backup"), e("span", { className:"chev" }, "›"))
+    ),
+
+    exportOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setExportOpen(false); } },
+      e("div", { className:"modal" },
+        e("h2", null, "Export backup"),
+        e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Tap the text to select it, then copy — paste it into Notes or a message to yourself."),
+        e("textarea", {
+          readOnly: true, value: buildBackupText(), className:"backup-text",
+          onClick: function(ev){ ev.target.select(); }
+        }),
+        copyStatus && e("div", { className:"hint", style:{ marginTop:"8px" } }, copyStatus),
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setExportOpen(false); } }, "Close"),
+          e("button", { className:"btn btn-primary", onClick: copyBackup }, "Copy to clipboard")
+        )
+      )
+    ),
+
+    restoreOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setRestoreOpen(false); } },
+      e("div", { className:"modal" },
+        e("h2", null, restoreConfirming ? "Replace all current data?" : "Restore from backup"),
+        !restoreConfirming
+          ? e(React.Fragment, null,
+              e("textarea", { value: restoreText, className:"backup-text", placeholder: "Paste backup text here", onChange: function(ev){ setRestoreText(ev.target.value); } }),
+              restoreError && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginTop:"8px" } }, restoreError),
+              e("div", { className:"modal-actions" },
+                e("button", { className:"btn btn-secondary", onClick: function(){ setRestoreOpen(false); } }, "Cancel"),
+                e("button", { className:"btn btn-primary", onClick: validateAndConfirm }, "Continue")
+              )
+            )
+          : e(React.Fragment, null,
+              e("div", { className:"hint" }, "This replaces everything on this phone with the pasted backup. Can't be undone."),
+              e("div", { className:"modal-actions" },
+                e("button", { className:"btn btn-secondary", onClick: function(){ setRestoreConfirming(false); } }, "Back"),
+                e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: doRestore }, "Replace data")
+              )
+            )
+      )
     )
   );
 }
@@ -750,6 +866,8 @@ function App(){
     setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).map(function(o){ return o.id===id ? Object.assign({}, o, patch) : o; }) }); });
   }
   function deleteObservation(id){ setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).filter(function(o){ return o.id !== id; }) }); }); }
+
+  function restoreState(newState){ setState({ farm: newState.farm, events: newState.events, observations: newState.observations || [] }); }
 
   // Event add/edit modal — shared by Settings ("+ Add new event") and History (double-tap an activity).
   const [modalOpen, setModalOpen] = useState(false);
@@ -843,7 +961,7 @@ function App(){
           onDeleteObservation: function(id){ setObsConfirmDeleteId(id); }
         }))
       : e(SettingsScreen, { state: state, onUpdateFarm: updateFarm, onOpenAddEvent: function(){ openAddModal(); },
-          onOpenAddObservation: openAddObsModal }),
+          onOpenAddObservation: openAddObsModal, onRestoreState: restoreState }),
 
     modalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setModalOpen(false); } },
       e("div", { className:"modal" },
