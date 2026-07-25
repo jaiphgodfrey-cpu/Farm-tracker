@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Japhe Farm">
-<title>Japhe Farm — Onion Tracker</title>
+<title>Japhe Farm: Onion Tracker</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%230d1512'/%3E%3Cellipse cx='50' cy='58' rx='26' ry='30' fill='%234fae68'/%3E%3Cpath d='M50 28 L50 12 M42 20 L50 12 L58 20' stroke='%23eef2ea' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -65,6 +65,9 @@
   .attention-group{ flex:1; min-height:0; display:flex; flex-direction:column; padding:0 0 6px; }
   .section-label.tight{ margin:12px 0 7px; flex-shrink:0; }
   .card-list.tight{ flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; }
+  .card-list.tight > .card-btn{ flex:1; min-height:0; }
+  .card-btn{ all:unset; box-sizing:border-box; display:block; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .card-btn .event-card{ height:100%; box-sizing:border-box; }
   .card-list.tight > .event-card{ flex:1; min-height:0; padding:9px 14px; }
   .card-list.tight .ring-wrap{ width:42px; height:42px; }
   .card-list.tight .ring-num{ font-size:13px; }
@@ -73,6 +76,16 @@
   .card-list.tight.one{ flex:0 0 auto; }
   .card-list.tight.one > .event-card{ flex:0 0 auto; padding:12px 16px; }
   .card-list.tight.one .ring-wrap{ width:48px; height:48px; }
+
+  .advisory-card{
+    all:unset; box-sizing:border-box; display:flex; align-items:center; gap:10px; cursor:pointer;
+    margin:12px 16px 0; padding:12px 14px; border-radius:14px; -webkit-tap-highlight-color:transparent;
+    background:rgba(143,224,164,0.14); border:1px solid rgba(143,224,164,0.35);
+  }
+  .advisory-card.partial{ background:rgba(240,198,117,0.14); border-color:rgba(240,198,117,0.35); }
+  .advisory-card .advisory-title{ font-size:13.5px; font-weight:700; color:var(--text-primary); }
+  .advisory-card .advisory-sub{ font-size:11.5px; color:var(--text-secondary); margin-top:2px; }
+  .advisory-card .chev{ color:var(--text-muted); font-size:16px; margin-left:auto; }
 
   .hero-text{ min-width:0; flex:1; }
   .health-pill{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px; vertical-align:middle; }
@@ -165,6 +178,30 @@
   .field select:disabled{color:var(--text-muted);}
   .hint{font-size:11px; color:var(--text-muted); margin-top:6px;}
 
+  .why-block{ background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:16px; padding:16px; }
+  .why-title{ font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:8px; }
+  .why-status-row{ margin-bottom:6px; }
+  .why-status-badge{ display:inline-block; font-size:11px; font-weight:700; padding:4px 10px; border-radius:20px; }
+  .why-status-badge.full{ background:rgba(143,224,164,0.18); color:#8fe0a4; }
+  .why-status-badge.partial{ background:rgba(240,198,117,0.18); color:#f0c675; }
+  .why-status-badge.none{ background:rgba(240,161,127,0.18); color:#f0a17f; }
+  .why-status-badge.no-data{ background:rgba(255,255,255,0.1); color:var(--text-muted); }
+  .why-subhead{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:0; }
+  .why-criteria-list{ display:flex; flex-direction:column; gap:12px; }
+  .why-criterion{ display:flex; flex-direction:column; gap:2px; font-size:12.5px; }
+  .why-crit-field{ font-weight:600; color:var(--text-primary); margin-bottom:2px; }
+  .why-crit-expected{ color:var(--text-secondary); }
+  .why-crit-observed{ color:var(--text-muted); }
+
+  .why-collapsible{ border-top:1px solid var(--border-subtle); margin-top:14px; padding-top:14px; }
+  .why-collapsible:first-of-type{ border-top:none; margin-top:14px; }
+  .why-collapsible-head{ all:unset; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; padding:2px 0; }
+  .why-collapsible-chev{ font-size:15px; font-weight:700; color:var(--text-muted); width:18px; text-align:center; flex-shrink:0; }
+  .why-collapsible-body{ margin-top:10px; }
+
+  .why-source-links{ display:flex; flex-direction:column; gap:6px; }
+  .why-source-link{ font-size:11.5px; color:var(--accent); text-decoration:none; word-break:break-word; }
+
   .backup-text{
     width:100%; min-height:180px; background:var(--bg-elevated); border:1px solid var(--border-subtle);
     border-radius:10px; padding:12px; color:var(--text-primary); font-size:12px; line-height:1.5;
@@ -220,17 +257,21 @@ const STORAGE_KEY = "japhe_farm_v1";
 // kind: "milestone" = one-time crop-stage marker (Season timeline).
 // kind: "attention" = recurring action worth checking regularly.
 const CATEGORIES = [
-  { id: "nursery",    label: "Nursery preparation",       kind: "milestone" },
-  { id: "sowing",     label: "Sowing",                     kind: "milestone" },
-  { id: "land_prep",  label: "Land preparation",           kind: "milestone" },
-  { id: "fertilizer", label: "Fertilizer application",     kind: "attention" },
-  { id: "spray",      label: "Spraying (pest/disease)",    kind: "attention" },
-  { id: "weeding",    label: "Weeding",                     kind: "attention" },
-  { id: "mulch",      label: "Mulching / removing mulch",  kind: "attention" },
-  { id: "irrigation", label: "Irrigation / watering",      kind: "attention" },
-  { id: "harvest",    label: "Harvest",                     kind: "milestone" },
-  { id: "custom",     label: "Custom",                      kind: "attention" }
+  { id: "nursery",       label: "Nursery preparation",       kind: "milestone" },
+  { id: "sowing",        label: "Sowing",                     kind: "milestone" },
+  { id: "land_prep",     label: "Land preparation",           kind: "milestone" },
+  { id: "transplanting", label: "Transplanting",              kind: "milestone" },
+  { id: "fertilizer",    label: "Fertilizer application",     kind: "attention" },
+  { id: "spray",         label: "Spraying (pest/disease)",    kind: "attention" },
+  { id: "weeding",       label: "Weeding",                     kind: "attention" },
+  { id: "mulch",         label: "Mulching / removing mulch",  kind: "attention" },
+  { id: "irrigation",    label: "Irrigation / watering",      kind: "attention" },
+  { id: "harvest",       label: "Harvest",                     kind: "milestone" },
+  { id: "stored_sold",   label: "Stored / Sold",               kind: "milestone" },
+  { id: "custom",        label: "Custom",                      kind: "attention" }
 ];
+
+const DISPOSITION_OPTIONS = ["Stored", "Sold"];
 
 // Priority order for "Needs your attention" — most important first. The section fills with
 // whichever of these already have data, skipping any not logged yet instead of showing a blank slot.
@@ -246,6 +287,14 @@ const OBS_MOISTURE_OPTIONS = ["Wet", "Moist", "Dry"];
 const OBS_LEAF_COLOR_OPTIONS = ["Dark green", "Green", "Light green", "Yellowing"];
 const OBS_PEST_OPTIONS = ["None seen", "Thrips", "Cutworms", "Other"];
 const OBS_DISEASE_OPTIONS = ["None seen", "Spots", "Rot", "Wilting"];
+// Ordered — later entries represent a more advanced tops/bulb state. Order matters for the
+// baseline-comparison engine below, which checks "at least as advanced as X".
+const OBS_TOPS_OPTIONS = ["Upright, no bulb yet", "Base starting to swell", "Bulbs visibly forming", "Tops starting to flop/yellow", "About half tops fallen", "Most tops fallen and dry"];
+function obsTopsIndex(val){ return OBS_TOPS_OPTIONS.indexOf(val); }
+// Ordered — for the curing/drying phase, checked against the FiBL Africa manual's concrete
+// definition of "done curing" (papery sheath, closed soft neck, dried last leaf).
+const OBS_CURING_OPTIONS = ["Not dry yet, necks soft/open", "Papery skins forming", "Neck closed and feels soft when rubbed", "Fully cured, papery, dry, last leaf dried"];
+function obsCuringIndex(val){ return OBS_CURING_OPTIONS.indexOf(val); }
 
 function categoryMeta(id){
   return CATEGORIES.find(function(c){ return c.id === id; }) || { id:id, label:id, kind:"attention" };
@@ -315,13 +364,20 @@ function withOrdinals(events){
 
 function eventDisplayName(ev){
   const cat = categoryMeta(ev.categoryId);
-  if(ev.categoryId === "spray") return "Spraying — " + (ev.sprayType || "Insecticide");
-  if(ev.categoryId === "fertilizer" && ev.fertilizerType) return "Fertilizer application — " + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "");
+  if(ev.categoryId === "spray") return "Spraying (" + (ev.sprayType || "Insecticide") + ")";
+  if(ev.categoryId === "fertilizer" && ev.fertilizerType) return "Fertilizer application (" + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "") + ")";
+  if(ev.categoryId === "stored_sold"){
+    const outcome = ev.outcome || "Stored";
+    let text = outcome;
+    if(ev.quantityGunia) text += " (" + ev.quantityGunia + " gunia)";
+    if(outcome === "Sold" && ev.priceTsh) text += ", Tsh " + Number(ev.priceTsh).toLocaleString();
+    return text;
+  }
   if(ev.label) return ev.label;
   return cat.label;
 }
 
-// Imperative phrasing for the Next Action cards — "what to do", not "what was logged".
+// Imperative phrasing for the Next Action cards: "what to do", not "what was logged".
 const ACTION_VERB = {
   fertilizer: "Apply fertilizer",
   spray: "Spray",
@@ -330,12 +386,23 @@ const ACTION_VERB = {
   irrigation: "Water the crop",
   custom: "Custom activity"
 };
+// Short, sourced explanation shown on the Why screen for each routine action, grounded in the
+// onion knowledge database rather than a generic guess. Kept deliberately brief; the timing is
+// advisory context, not a rule the app enforces on its own.
+const ACTION_GUIDANCE = {
+  fertilizer: { text: "Typically split into two applications, around 30 and 45 days after transplanting, then stopped at least 4 weeks before harvest. Too much, too late, tends to cause thick necks and poor storage.", sourceKeys: ["G1", "KE1", "G7"] },
+  spray: { text: "Best done on a regular watch and respond basis rather than a fixed schedule. Weekly scouting for thrips (the dominant regional pest) is more reliable than a calendar date.", sourceKeys: ["TZ2", "UG2", "G7"] },
+  weeding: { text: "Onions compete poorly with weeds due to their shallow, upright growth habit. Staying on top of this matters more early in the season, before the canopy fills in.", sourceKeys: ["G3", "G7"] },
+  irrigation: { text: "Light and frequent early on, substantially more at bulbing (the highest-demand stage), reduced and then stopped 2-4 weeks before harvest.", sourceKeys: ["G1", "G7", "G8", "G9"] },
+  mulch: { text: "Helps conserve moisture and suppress weeds early on, but is best removed once bulbing starts so it doesn't interfere with bulb enlargement.", sourceKeys: ["G7"] },
+  custom: { text: "No specific guideline for a custom activity. This is whatever you've defined it to be.", sourceKeys: [] }
+};
 function nextActionTitle(ev){
   if(ev.categoryId === "fertilizer"){
-    const detail = ev.fertilizerType ? (" — " + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "")) : "";
+    const detail = ev.fertilizerType ? (" (" + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "") + ")") : "";
     return "Apply fertilizer" + detail;
   }
-  if(ev.categoryId === "spray") return "Spray — " + (ev.sprayType || "Insecticide");
+  if(ev.categoryId === "spray") return "Spray (" + (ev.sprayType || "Insecticide") + ")";
   return ACTION_VERB[ev.categoryId] || eventDisplayName(ev);
 }
 
@@ -376,16 +443,139 @@ function TimelineItem(ev){
   );
 }
 
-const STAGES = [
-  { max: 15, label: "Germination & establishment" },
-  { max: 40, label: "Vegetative growth" },
-  { max: 70, label: "Bulb development" },
-  { max: 100, label: "Maturation" },
+// Growth-stage labels, split by which season phase is currently anchoring the day-count.
+// Phase 1 (sowing → transplanting): a single constant label — no point sub-staging by days
+// here since the real trigger for moving on is the Transplanting event, not a day threshold.
+const GERMINATION_LABEL = "Germination & establishment";
+// Phase 2 (transplanting → harvest): day thresholds are defaults (TARI-based typical onion
+// timings) and are meant to be checked against logged Observations over time, not treated as fact.
+const POST_TRANSPLANT_STAGES = [
+  { max: 25, label: "Vegetative growth" },
+  { max: 55, label: "Bulb development" },
+  { max: 85, label: "Maturation" },
   { max: Infinity, label: "Ready for harvest check" }
 ];
-function stageForDays(days){
-  for(var i = 0; i < STAGES.length; i++){ if(days <= STAGES[i].max) return STAGES[i].label; }
-  return STAGES[STAGES.length-1].label;
+function stageForTransplantDays(days){
+  for(var i = 0; i < POST_TRANSPLANT_STAGES.length; i++){ if(days <= POST_TRANSPLANT_STAGES[i].max) return POST_TRANSPLANT_STAGES[i].label; }
+  return POST_TRANSPLANT_STAGES[POST_TRANSPLANT_STAGES.length-1].label;
+}
+// Phase 3 (harvest → stored/sold): one constant label, ends when Stored/Sold is logged.
+const DRYING_LABEL = "Curing / drying";
+
+// ---- Observation-comparison engine ----
+// This is deliberately NOT free-text parsing. Every criterion below is checked against a
+// structured field the farmer explicitly picked in the Observation form (leaf count, height,
+// tops/bulb status), never against the free-text notes. That keeps the comparison honest and
+// explainable: the "Why" screen can always show exactly which field drove which match.
+// Every expected value is sourced from the onion knowledge database, not invented.
+
+// Real, checkable sources — shown on the Why screen as a plain name + link, no internal codes.
+const SOURCE_LINKS = {
+  G1: { name: "Bulb Onion Production guide (Kenya Ministry of Agriculture / JICA)", url: "https://www.jica.go.jp/Resource/project/english/kenya/015/materials/c8h0vm0000f7o8cj-att/materials_20.pdf" },
+  G3: { name: "Utah State University Extension, onions in the garden", url: "https://extension.usu.edu/yardandgarden/research/onions-in-the-garden" },
+  G7: { name: "Organic Onion Production, a resource manual for Africa (FiBL)", url: "https://orgprints.org/id/eprint/54038/1/1499-onion-africa.pdf" },
+  G8: { name: "Onion Production, a practical guide for smallholder farmers in Ethiopia (Bahir Dar University)", url: "https://healthyfoodafrica.eu/wp-content/uploads/FSL_BDU_ONion_Production_guide.pdf" },
+  G9: { name: "Utah State University Extension, onion thrips management", url: "https://extension.usu.edu/pests/ipm/notes_ag/veg-thrips" },
+  KE1: { name: "KALRO, Kenya onion production practices", url: "https://kalrotimps.com/timps/14" },
+  TZ2: { name: "Sokoine University of Agriculture, onion pest and variety survey (Kilosa and Kilolo, Tanzania)", url: "https://www.ajol.info/index.php/tjags/article/view/130183" },
+  UG2: { name: "Onion purple blotch farm management practices study (Uganda)", url: "https://journals.eanso.org/index.php/eajab/article/view/1262" }
+};
+
+const BASELINE_CHECKS = {
+  readyToTransplant: {
+    appliesWhenPhase: "germination",
+    label: "Signs you may be ready to transplant",
+    actionHint: "Log a Transplanting event once you've actually moved the seedlings to the field.",
+    sourceKeys: ["G7"],
+    sourceNote: "Seedlings are typically transplanted 6-8 weeks after sowing, at 8-12cm tall with a pencil-thick base and 3-5 leaves.",
+    criteria: [
+      { key: "leafCount", fieldLabel: "Leaf count", expectedText: "3-5 leaves", test: function(o){ return o.leafCount != null ? (o.leafCount >= 3 && o.leafCount <= 5) : null; }, getValue: function(o){ return o.leafCount != null ? (o.leafCount + " leaves") : null; } },
+      { key: "heightCm", fieldLabel: "Plant height", expectedText: "8-12cm tall", test: function(o){ return o.heightCm != null ? (o.heightCm >= 8 && o.heightCm <= 12) : null; }, getValue: function(o){ return o.heightCm != null ? (o.heightCm + "cm") : null; } }
+    ]
+  },
+  bulbingStarted: {
+    appliesWhenPhase: "growing",
+    onlySubStage: "Vegetative growth",
+    label: "Signs bulbing may be starting",
+    actionHint: "No event to log yet, this is just a heads-up. The app will move to Bulb development on its own once enough days have passed, or update sooner if your observations confirm it.",
+    sourceKeys: ["G7"],
+    sourceNote: "The base/neck typically starts to swell around 4 weeks after transplanting.",
+    criteria: [
+      { key: "leafCount", fieldLabel: "Leaf count", expectedText: "5 or more leaves", test: function(o){ return o.leafCount != null ? (o.leafCount >= 5) : null; }, getValue: function(o){ return o.leafCount != null ? (o.leafCount + " leaves") : null; } },
+      { key: "topsStatus", fieldLabel: "Tops / bulb status", expectedText: "at least \u201cBase starting to swell\u201d", test: function(o){ return o.topsStatus ? (obsTopsIndex(o.topsStatus) >= obsTopsIndex("Base starting to swell")) : null; }, getValue: function(o){ return o.topsStatus || null; } }
+    ]
+  },
+  maturationStarted: {
+    appliesWhenPhase: "growing",
+    onlySubStage: "Bulb development",
+    label: "Signs maturation may be starting",
+    actionHint: "No event to log yet, this is just a heads-up. The app will move to Maturation on its own once enough days have passed, or update sooner if your observations confirm it.",
+    sourceKeys: ["G7"],
+    sourceNote: "Maturation begins as tops start to flop over and yellow, signalling the bulb has stopped bulking up and is starting to finish.",
+    criteria: [
+      { key: "topsStatus", fieldLabel: "Tops / bulb status", expectedText: "at least \u201cTops starting to flop/yellow\u201d", test: function(o){ return o.topsStatus ? (obsTopsIndex(o.topsStatus) >= obsTopsIndex("Tops starting to flop/yellow")) : null; }, getValue: function(o){ return o.topsStatus || null; } }
+    ]
+  },
+  harvestReady: {
+    appliesWhenPhase: "growing",
+    onlySubStage: ["Maturation", "Ready for harvest check"],
+    label: "Signs you may be ready to harvest",
+    actionHint: "Log a Harvest event once you've actually pulled the crop.",
+    sourceKeys: ["G7"],
+    sourceNote: "Storage-grade maturity is reached once 75-85% of tops have fallen over and dried.",
+    criteria: [
+      { key: "topsStatus", fieldLabel: "Tops / bulb status", expectedText: "at least \u201cMost tops fallen and dry\u201d", test: function(o){ return o.topsStatus ? (obsTopsIndex(o.topsStatus) >= obsTopsIndex("Most tops fallen and dry")) : null; }, getValue: function(o){ return o.topsStatus || null; } }
+    ]
+  },
+  curingComplete: {
+    appliesWhenPhase: "drying",
+    label: "Signs curing may be complete",
+    actionHint: "No event to log yet as such. Once you actually put the onions into storage or sell them, log the Stored/Sold event to close the season.",
+    sourceKeys: ["G7"],
+    sourceNote: "Curing is considered complete when the sheath leaves are papery in the variety's typical colour, the neck is closed without a large cavity and feels soft when rubbed between thumb and finger, and the last (dry) leaf has fully dried.",
+    criteria: [
+      { key: "curingStatus", fieldLabel: "Curing / neck condition", expectedText: "at least \u201cNeck closed and feels soft when rubbed\u201d", test: function(o){ return o.curingStatus ? (obsCuringIndex(o.curingStatus) >= obsCuringIndex("Neck closed and feels soft when rubbed")) : null; }, getValue: function(o){ return o.curingStatus || null; } }
+    ]
+  }
+};
+
+// Picks the one check relevant to the current phase/sub-stage, evaluates it against the most
+// recent Observation, and returns everything the "Why" screen needs to explain itself. Never
+// changes the logged-event phase — advisory only, per design decision.
+function evaluateBaselineCheck(heroPhase, subStageLabel, observations){
+  let checkKey = null;
+  Object.keys(BASELINE_CHECKS).forEach(function(key){
+    const c = BASELINE_CHECKS[key];
+    if(c.appliesWhenPhase !== heroPhase) return;
+    if(c.onlySubStage){
+      const allowed = Array.isArray(c.onlySubStage) ? c.onlySubStage : [c.onlySubStage];
+      if(allowed.indexOf(subStageLabel) === -1) return;
+    }
+    checkKey = key;
+  });
+  if(!checkKey) return null;
+  const check = BASELINE_CHECKS[checkKey];
+
+  const latest = (observations || []).slice().sort(function(a,b){ return b.date.localeCompare(a.date); })[0] || null;
+
+  const results = check.criteria.map(function(c){
+    const outcome = latest ? c.test(latest) : null; // true=match, false=not yet, null=not recorded
+    const observedValue = latest ? c.getValue(latest) : null;
+    return { fieldLabel: c.fieldLabel, expectedText: c.expectedText, outcome: outcome, observedValue: observedValue };
+  });
+  const provided = results.filter(function(r){ return r.outcome !== null; });
+  let overall;
+  if(!latest || provided.length === 0) overall = "no-data";
+  else if(provided.every(function(r){ return r.outcome === true; })) overall = "full";
+  else if(provided.some(function(r){ return r.outcome === true; })) overall = "partial";
+  else overall = "none";
+
+  return {
+    checkKey: checkKey, label: check.label, actionHint: check.actionHint,
+    sourceKeys: check.sourceKeys, sourceNote: check.sourceNote,
+    results: results, overall: overall,
+    observationDate: latest ? latest.date : null
+  };
 }
 
 function healthStatus(latestByCat){
@@ -444,14 +634,42 @@ function latestFieldNote(state){
   return items.sort(function(a,b){ return b.date.localeCompare(a.date); })[0];
 }
 
+// Shared by HomeScreen and WhyScreen so both always agree on the current season phase.
+function computeSeasonPhase(events){
+  const sowings = events.filter(function(ev){ return ev.categoryId === "sowing"; });
+  const sowingEvent = sowings.length ? sowings.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop() : null;
+  function latestInSeason(catId){
+    if(!sowingEvent) return null;
+    const matches = events.filter(function(ev){ return ev.categoryId === catId && ev.date >= sowingEvent.date; });
+    if(matches.length === 0) return null;
+    return matches.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop();
+  }
+  const transplantEvent = latestInSeason("transplanting");
+  const harvestEvent = latestInSeason("harvest");
+  const dispositionEvent = latestInSeason("stored_sold");
+  let heroPhase = null;
+  if(sowingEvent){
+    if(dispositionEvent) heroPhase = "complete";
+    else if(harvestEvent) heroPhase = "drying";
+    else if(transplantEvent) heroPhase = "growing";
+    else heroPhase = "germination";
+  }
+  const heroAnchorEvent = heroPhase === "growing" ? transplantEvent : heroPhase === "drying" ? harvestEvent : sowingEvent;
+  const cropAge = heroAnchorEvent ? daysSince(heroAnchorEvent.date) : null;
+  const heroStageLabel = heroPhase === "growing" ? stageForTransplantDays(cropAge)
+    : heroPhase === "drying" ? DRYING_LABEL
+    : GERMINATION_LABEL;
+  return { sowingEvent: sowingEvent, transplantEvent: transplantEvent, harvestEvent: harvestEvent, dispositionEvent: dispositionEvent,
+    heroPhase: heroPhase, cropAge: cropAge, heroStageLabel: heroStageLabel };
+}
+
 function HomeScreen(state){
   const withOrd = useMemo(function(){ return withOrdinals(state.events.slice()); }, [state.events]);
 
-  const sowingEvent = useMemo(function(){
-    const sowings = state.events.filter(function(ev){ return ev.categoryId === "sowing"; });
-    if(sowings.length === 0) return null;
-    return sowings.slice().sort(function(a,b){ return a.date.localeCompare(b.date); })[0];
-  }, [state.events]);
+  const seasonPhase = useMemo(function(){ return computeSeasonPhase(state.events); }, [state.events]);
+  const sowingEvent = seasonPhase.sowingEvent, transplantEvent = seasonPhase.transplantEvent,
+    harvestEvent = seasonPhase.harvestEvent, dispositionEvent = seasonPhase.dispositionEvent,
+    heroPhase = seasonPhase.heroPhase, cropAge = seasonPhase.cropAge, heroStageLabel = seasonPhase.heroStageLabel;
 
   const latestByCat = useMemo(function(){
     const map = {};
@@ -460,13 +678,12 @@ function HomeScreen(state){
     });
     return map;
   }, [withOrd]);
-
-  const cropAge = sowingEvent ? daysSince(sowingEvent.date) : null;
   const nextActionCats = useMemo(function(){
     return FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; }).slice(0, 3);
   }, [latestByCat]);
   const note = useMemo(function(){ return latestFieldNote(state); }, [state.events, state.observations]);
   const hasAnyEvents = state.events.length > 0;
+  const engineCheck = useMemo(function(){ return evaluateBaselineCheck(heroPhase, heroStageLabel, state.observations); }, [heroPhase, heroStageLabel, state.observations]);
 
   return e("div", { className:"home-wrap" },
     e("div", { className:"header" },
@@ -481,26 +698,45 @@ function HomeScreen(state){
 
     e("div", { className:"home-body" },
 
-      // How is the crop doing? — hero panel: age and growth stage.
+      // How is the crop doing? — hero panel: age and growth stage, re-anchored to
+      // whichever season phase is currently active (sowing / transplanting / harvest / stored-sold).
       e("div", { className:"hero" },
-        e("div", { className:"hero-ring-wrap" }, e(RingHero, { days: cropAge === null ? 0 : cropAge })),
+        e("div", { className:"hero-ring-wrap" }, e(RingHero, { days: cropAge === null ? 0 : cropAge, complete: heroPhase === "complete" })),
         e("div", { className:"hero-text" },
-          cropAge === null
+          heroPhase === null
             ? e("div", { className:"hero-sub" }, "Log a sowing date in Settings to start tracking.")
+            : heroPhase === "complete"
+            ? e(React.Fragment, null,
+                e("div", { className:"hero-num mono" }, dispositionEvent.quantityGunia || "—"),
+                e("div", { className:"hero-label" }, (dispositionEvent.outcome === "Sold" ? "gunia sold" : "gunia stored")),
+                e("div", { className:"hero-sub" }, "Season complete · " + relativeLabel(daysSince(dispositionEvent.date)) + " · log a new sowing to start next season")
+              )
             : e(React.Fragment, null,
                 e("div", { className:"hero-num mono" }, cropAge),
-                e("div", { className:"hero-label" }, cropAge === 1 ? "day since sowing" : "days since sowing"),
-                e("div", { className:"hero-sub" }, stageForDays(cropAge))
+                e("div", { className:"hero-label" }, (cropAge === 1 ? "day since " : "days since ") + (heroPhase === "growing" ? "transplanting" : heroPhase === "drying" ? "harvest" : "sowing")),
+                e("div", { className:"hero-sub" }, heroStageLabel)
               )
         )
       ),
+
+      // Engine advisory — only shown when a logged Observation actually matches or partially
+      // matches the next stage's expected characteristics. Tapping it opens the full reasoning
+      // on the Why tab. This never changes the season phase itself — see evaluateBaselineCheck.
+      engineCheck && (engineCheck.overall === "full" || engineCheck.overall === "partial") &&
+        e("button", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); } },
+          e("div", { style:{ minWidth:0, flex:1 } },
+            e("div", { className:"advisory-title" }, engineCheck.overall === "full" ? "✓ " + engineCheck.label : engineCheck.label),
+            e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? "Your latest observation matches the guideline. Tap to see why." : "Getting close. Tap to see what's matched so far.")
+          ),
+          e("span", { className:"chev" }, "›")
+        ),
 
       // What must I do now? — up to three tracked activities, most important first.
       e("div", { className:"section-label tight" }, "Next action"),
       !hasAnyEvents || nextActionCats.length === 0
         ? e("div", { className:"empty-state compact" }, e("div", null, "Add fertilizer, spraying, or weeding from Settings."))
         : e("div", { className:"card-list tight" }, nextActionCats.map(function(catId){
-            return e(TopAttentionCard, { key: catId, ev: latestByCat[catId] });
+            return e("button", { key: catId, className:"card-btn", onClick: function(){ state.onGoToWhy(catId); } }, e(TopAttentionCard, { ev: latestByCat[catId] }));
           })),
 
       // What changed recently? — the newest field note.
@@ -521,7 +757,7 @@ function HomeScreen(state){
 function RingHero(props){
   const days = props.days, size = 78, stroke = 7;
   const r = (size-stroke)/2, c = 2*Math.PI*r;
-  const pct = Math.max(0.06, Math.min(1, days/90));
+  const pct = props.complete ? 1 : Math.max(0.06, Math.min(1, days/90));
   return e("svg", { width:size, height:size, style:{ transform:"rotate(-90deg)" } },
     e("circle", { cx:size/2, cy:size/2, r:r, fill:"none", stroke:"rgba(255,255,255,0.12)", strokeWidth:stroke }),
     e("circle", { cx:size/2, cy:size/2, r:r, fill:"none", stroke:"#fff", strokeWidth:stroke, strokeDasharray:c, strokeDashoffset:c*(1-pct), strokeLinecap:"round" })
@@ -547,6 +783,13 @@ function IconHistory(active){
   return e("svg", {width:20,height:20,viewBox:"0 0 24 24",fill:"none"},
     e("circle", {cx:12, cy:12, r:9, stroke:c, strokeWidth:2}),
     e("path", {d:"M12 7v5l3.5 2", stroke:c, strokeWidth:2, strokeLinecap:"round", strokeLinejoin:"round"})
+  );
+}
+function IconWhy(active){
+  const c = active ? "var(--accent)" : "var(--text-muted)";
+  return e("svg", {width:20,height:20,viewBox:"0 0 24 24",fill:"none"},
+    e("path", {d:"M9 18h6M10 21h4", stroke:c, strokeWidth:2, strokeLinecap:"round"}),
+    e("path", {d:"M12 3a6 6 0 00-3.5 10.9c.6.44 1 1.15 1 1.95V16h5v-.15c0-.8.4-1.5 1-1.95A6 6 0 0012 3z", stroke:c, strokeWidth:2, strokeLinejoin:"round"})
   );
 }
 
@@ -596,7 +839,9 @@ function ObservationDetailSheet(props){
     ["Soil moisture", o.soilMoisture],
     ["Leaf colour", o.leafColor],
     ["Pests seen", o.pestPresence],
-    ["Disease symptoms", o.diseaseSymptoms]
+    ["Disease symptoms", o.diseaseSymptoms],
+    ["Tops / bulb status", o.topsStatus],
+    ["Curing / neck condition", o.curingStatus]
   ].filter(function(r){ return r[1]; });
   return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
     e("div", { className:"modal" },
@@ -633,6 +878,123 @@ function ActivityRow(props){
     )
   );
 }
+
+// A single collapsible subsection used throughout the Why screen — keeps each card short by
+// default so there's room below for other features, while still letting the farmer open any
+// section that interests them.
+function WhyCollapsible(props){
+  const [open, setOpen] = useState(!!props.defaultOpen);
+  return e("div", { className:"why-collapsible" },
+    e("button", { className:"why-collapsible-head", onClick:function(){ setOpen(!open); } },
+      e("span", { className:"why-subhead", style:{ margin:0 } }, props.title),
+      e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
+    ),
+    open && e("div", { className:"why-collapsible-body" }, props.children)
+  );
+}
+
+function WhySourceLinks(props){
+  const keys = props.sourceKeys || [];
+  const links = keys.map(function(k){ return SOURCE_LINKS[k]; }).filter(Boolean);
+  if(links.length === 0) return null;
+  return e("div", { className:"why-source-links" }, links.map(function(s, i){
+    return e("a", { key:i, className:"why-source-link", href:s.url, target:"_blank", rel:"noopener noreferrer" }, s.name + " \u2197");
+  }));
+}
+
+// The Why screen — answers "why is the app telling me this?" It never introduces new logic of
+// its own; it only explains the engine advisory (evaluateBaselineCheck) and the routine action
+// reminders (ACTION_GUIDANCE) that already drive Home. Nothing here changes app state.
+function WhyScreen(props){
+  const state = props.state;
+  const withOrd = useMemo(function(){ return withOrdinals(state.events.slice()); }, [state.events]);
+  const seasonPhase = useMemo(function(){ return computeSeasonPhase(state.events); }, [state.events]);
+  const engineCheck = useMemo(function(){
+    return evaluateBaselineCheck(seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations);
+  }, [seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations]);
+  const latestByCat = useMemo(function(){
+    const map = {};
+    withOrd.forEach(function(ev){ if(!map[ev.categoryId] || ev.date > map[ev.categoryId].date) map[ev.categoryId] = ev; });
+    return map;
+  }, [withOrd]);
+  const actionCats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
+
+  // Scrolls to whichever card was tapped from Home, whether that's the engine advisory or a
+  // specific routine action. Re-runs every time a new tap comes in, even if it's the same card.
+  useEffect(function(){
+    const focus = props.focus;
+    if(!focus || !focus.id) return;
+    const domId = focus.id === "engine" ? "why-engine" : "why-action-" + focus.id;
+    const el = document.getElementById(domId);
+    if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
+  }, [props.focus && props.focus.token]);
+
+  return e("div", { style:{ paddingBottom:"76px" } },
+    e("div", { className:"header" }, e("div", { className:"farmname" }, "Why")),
+
+    e("div", { className:"section-label" }, "Current stage advisory"),
+    !seasonPhase.heroPhase
+      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, "No active season yet. Log a Sowing date to start."))
+      : !engineCheck
+      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } },
+          e("div", null, "Nothing to check at this stage (" + seasonPhase.heroStageLabel + ") right now. This screen will show something once you're at a stage boundary the engine tracks."))
+      : e("div", { className:"why-block", id:"why-engine", style:{ margin:"0 20px 20px" } },
+          e("div", { className:"why-title" }, engineCheck.label),
+          e("div", { className:"why-status-row" },
+            e("span", { className:"why-status-badge " + engineCheck.overall },
+              engineCheck.overall === "full" ? "Matches guideline"
+              : engineCheck.overall === "partial" ? "Partially matches"
+              : engineCheck.overall === "none" ? "Not yet matching"
+              : "No observation logged yet")
+          ),
+
+          e(WhyCollapsible, { title:"What the guideline expects", defaultOpen:true },
+            e("div", { className:"why-criteria-list" }, engineCheck.results.map(function(r, i){
+              return e("div", { className:"why-criterion", key:i },
+                e("div", { className:"why-crit-field" }, r.fieldLabel),
+                e("div", { className:"why-crit-expected" }, "Guideline: " + r.expectedText),
+                e("div", { className:"why-crit-observed" }, r.observedValue ? ("You recorded: " + r.observedValue) : "Not recorded yet")
+              );
+            }))
+          ),
+
+          e(WhyCollapsible, { title:"What was observed" },
+            e("div", { className:"hint" }, engineCheck.observationDate
+              ? "From your observation logged " + relativeLabel(daysSince(engineCheck.observationDate)) + " (" + formatDateDisplay(engineCheck.observationDate) + ")."
+              : "No observation logged yet in this stage. Add one from Settings to see a real comparison here.")
+          ),
+
+          e(WhyCollapsible, { title:"Source" },
+            e("div", { className:"hint", style:{ marginBottom:"8px" } }, engineCheck.sourceNote),
+            e(WhySourceLinks, { sourceKeys: engineCheck.sourceKeys })
+          ),
+
+          e(WhyCollapsible, { title:"What happens next" },
+            e("div", { className:"hint" }, engineCheck.actionHint)
+          ),
+
+          e(WhyCollapsible, { title:"What would change this" },
+            e("div", { className:"hint" }, "Logging a new Observation with updated leaf count, height, or tops/bulb status will re-run this comparison. This screen never changes your season phase by itself. Only logging the real event (Transplanting, Harvest, etc.) does that.")
+          )
+        ),
+
+    e("div", { className:"section-label" }, "Routine actions"),
+    actionCats.length === 0
+      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, "No routine actions logged yet."))
+      : e("div", { style:{ margin:"0 20px" } }, actionCats.map(function(catId){
+          const ev = latestByCat[catId];
+          const guidance = ACTION_GUIDANCE[catId] || { text:"", sourceKeys:[] };
+          return e("div", { className:"why-block", id:"why-action-" + catId, style:{ marginBottom:"12px" }, key:catId },
+            e("div", { className:"why-title" }, nextActionTitle(ev)),
+            e("div", { className:"hint", style:{ marginBottom:"8px" } }, "Last done " + relativeLabel(daysSince(ev.date)) + " (" + formatDateDisplay(ev.date) + ")"),
+            e("div", { className:"why-subhead", style:{ marginTop:"10px", marginBottom:"6px" } }, "Guideline"),
+            e("div", { className:"hint", style:{ marginBottom:"8px" } }, guidance.text),
+            e(WhySourceLinks, { sourceKeys: guidance.sourceKeys })
+          );
+        }))
+  );
+}
+
 
 function HistoryScreen(props){
   const state = props;
@@ -710,7 +1072,7 @@ function OptionalSelect(props){
   return e("div", { className:"field" },
     e("label", null, props.label),
     e("select", { value: props.value, onChange: function(ev){ props.onChange(ev.target.value); } },
-      e("option", { value:"" }, "— Not observed —"),
+      e("option", { value:"" }, "Not observed"),
       props.options.map(function(o){ return e("option", { value:o, key:o }, o); })
     )
   );
@@ -736,6 +1098,7 @@ function SettingsScreen(props){
     return JSON.stringify({
       _backup: true,
       exportedAt: todayISO(),
+      engineBaselineVersion: "2.0-fully-verified",
       farm: state.farm,
       events: state.events,
       observations: state.observations || []
@@ -749,7 +1112,7 @@ function SettingsScreen(props){
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text)
         .then(function(){ setCopyStatus("Copied."); })
-        .catch(function(){ setCopyStatus("Couldn't copy automatically — tap the text to select it, then copy."); });
+        .catch(function(){ setCopyStatus("Couldn't copy automatically. Tap the text to select it, then copy."); });
     } else {
       setCopyStatus("Tap the text to select it, then copy.");
     }
@@ -761,13 +1124,13 @@ function SettingsScreen(props){
     try{
       const parsed = JSON.parse(restoreText.trim());
       if(!parsed || !parsed.farm || !Array.isArray(parsed.events)){
-        setRestoreError("That doesn't look like a valid backup — check you copied the whole thing.");
+        setRestoreError("That doesn't look like a valid backup. Check you copied the whole thing.");
         return;
       }
       setRestoreError("");
       setRestoreConfirming(true);
     }catch(err){
-      setRestoreError("Couldn't read that as a backup — check you copied the whole thing.");
+      setRestoreError("Couldn't read that as a backup. Check you copied the whole thing.");
     }
   }
 
@@ -811,7 +1174,7 @@ function SettingsScreen(props){
     exportOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setExportOpen(false); } },
       e("div", { className:"modal" },
         e("h2", null, "Export backup"),
-        e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Tap the text to select it, then copy — paste it into Notes or a message to yourself."),
+        e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Tap the text to select it, then copy. Paste it into Notes or a message to yourself."),
         e("textarea", {
           readOnly: true, value: buildBackupText(), className:"backup-text",
           onClick: function(ev){ ev.target.select(); }
@@ -851,6 +1214,7 @@ function SettingsScreen(props){
 function App(){
   const [state, setState] = useState(loadState);
   const [tab, setTab] = useState("home");
+  const [whyFocus, setWhyFocus] = useState(null);
   useEffect(function(){ saveState(state); }, [state]);
   useEffect(function(){ document.body.style.overflow = tab === "home" ? "hidden" : ""; }, [tab]);
 
@@ -879,18 +1243,26 @@ function App(){
   const [formQuantityKg, setFormQuantityKg] = useState("");
   const [formObservation, setFormObservation] = useState("");
   const [formLabel, setFormLabel] = useState("");
+  const [formOutcome, setFormOutcome] = useState(DISPOSITION_OPTIONS[0]);
+  const [formQuantityGunia, setFormQuantityGunia] = useState("");
+  const [formPriceTsh, setFormPriceTsh] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   function openAddModal(presetCategory){
     setEditingId(null); setFormCategory(presetCategory || CATEGORIES[0].id); setFormDate(todayISO());
     setFormSprayType(SPRAY_TYPES[0]); setFormFertilizerType(""); setFormQuantityKg("");
-    setFormObservation(""); setFormLabel(""); setModalOpen(true);
+    setFormObservation(""); setFormLabel("");
+    setFormOutcome(DISPOSITION_OPTIONS[0]); setFormQuantityGunia(""); setFormPriceTsh("");
+    setModalOpen(true);
   }
   function openEditModal(ev){
     setEditingId(ev.id); setFormCategory(ev.categoryId); setFormDate(ev.date);
     setFormSprayType(ev.sprayType || SPRAY_TYPES[0]);
     setFormFertilizerType(ev.fertilizerType || ""); setFormQuantityKg(ev.quantityKg != null ? String(ev.quantityKg) : "");
     setFormObservation(ev.observation || ""); setFormLabel(ev.label || "");
+    setFormOutcome(ev.outcome || DISPOSITION_OPTIONS[0]);
+    setFormQuantityGunia(ev.quantityGunia != null ? String(ev.quantityGunia) : "");
+    setFormPriceTsh(ev.priceTsh != null ? String(ev.priceTsh) : "");
     setModalOpen(true);
   }
   const isRichCategory = formCategory === "fertilizer" || formCategory === "spray";
@@ -901,6 +1273,11 @@ function App(){
       base.fertilizerType = formFertilizerType.trim() || undefined;
       base.quantityKg = formQuantityKg.trim() ? Number(formQuantityKg) : undefined;
       base.observation = formObservation.trim() || undefined;
+    }
+    else if(formCategory === "stored_sold"){
+      base.outcome = formOutcome;
+      base.quantityGunia = formQuantityGunia.trim() ? Number(formQuantityGunia) : undefined;
+      base.priceTsh = (formOutcome === "Sold" && formPriceTsh.trim()) ? Number(formPriceTsh) : undefined;
     }
     else { base.label = formLabel.trim() || undefined; }
 
@@ -920,18 +1297,20 @@ function App(){
   const [obsLeafColor, setObsLeafColor] = useState("");
   const [obsPest, setObsPest] = useState("");
   const [obsDisease, setObsDisease] = useState("");
+  const [obsTops, setObsTops] = useState("");
+  const [obsCuring, setObsCuring] = useState("");
   const [obsNotes, setObsNotes] = useState("");
   const [obsConfirmDeleteId, setObsConfirmDeleteId] = useState(null);
 
   function openAddObsModal(){
     setObsEditingId(null); setObsDate(todayISO()); setObsStage(""); setObsLeafCount(""); setObsHeightCm("");
-    setObsMoisture(""); setObsLeafColor(""); setObsPest(""); setObsDisease(""); setObsNotes(""); setObsModalOpen(true);
+    setObsMoisture(""); setObsLeafColor(""); setObsPest(""); setObsDisease(""); setObsTops(""); setObsCuring(""); setObsNotes(""); setObsModalOpen(true);
   }
   function openEditObsModal(o){
     setObsEditingId(o.id); setObsDate(o.date); setObsStage(o.observedStage || "");
     setObsLeafCount(o.leafCount != null ? String(o.leafCount) : ""); setObsHeightCm(o.heightCm != null ? String(o.heightCm) : "");
     setObsMoisture(o.soilMoisture || ""); setObsLeafColor(o.leafColor || "");
-    setObsPest(o.pestPresence || ""); setObsDisease(o.diseaseSymptoms || ""); setObsNotes(o.notes || "");
+    setObsPest(o.pestPresence || ""); setObsDisease(o.diseaseSymptoms || ""); setObsTops(o.topsStatus || ""); setObsCuring(o.curingStatus || ""); setObsNotes(o.notes || "");
     setObsModalOpen(true);
   }
   function submitObsForm(){
@@ -944,6 +1323,8 @@ function App(){
       leafColor: obsLeafColor || undefined,
       pestPresence: obsPest || undefined,
       diseaseSymptoms: obsDisease || undefined,
+      topsStatus: obsTops || undefined,
+      curingStatus: obsCuring || undefined,
       notes: obsNotes.trim() || undefined
     };
     if(obsEditingId){ updateObservation(obsEditingId, base); }
@@ -952,7 +1333,7 @@ function App(){
   }
 
   return e(React.Fragment, null,
-    tab === "home" ? e(HomeScreen, state)
+    tab === "home" ? e(HomeScreen, Object.assign({}, state, { onGoToWhy: function(focusId){ setWhyFocus({ id: focusId || null, token: Date.now() }); setTab("why"); } }))
       : tab === "history" ? e(HistoryScreen, Object.assign({}, state, {
           onEditEvent: openEditModal,
           onDeleteEvent: function(id){ setConfirmDeleteId(id); },
@@ -960,6 +1341,7 @@ function App(){
           onEditObservation: openEditObsModal,
           onDeleteObservation: function(id){ setObsConfirmDeleteId(id); }
         }))
+      : tab === "why" ? e(WhyScreen, { state: state, focus: whyFocus })
       : e(SettingsScreen, { state: state, onUpdateFarm: updateFarm, onOpenAddEvent: function(){ openAddModal(); },
           onOpenAddObservation: openAddObsModal, onRestoreState: restoreState }),
 
@@ -982,6 +1364,17 @@ function App(){
         formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Quantity (kg)"),
           e("input", { type:"number", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
         ),
+        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, "Outcome"),
+          e("select", { value: formOutcome, onChange: function(ev){ setFormOutcome(ev.target.value); } },
+            DISPOSITION_OPTIONS.map(function(o){ return e("option", { value:o, key:o }, o); })
+          )
+        ),
+        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, "Quantity (gunia)"),
+          e("input", { type:"number", inputMode:"numeric", value: formQuantityGunia, placeholder: "e.g. 6", onChange: function(ev){ setFormQuantityGunia(ev.target.value); } })
+        ),
+        formCategory === "stored_sold" && formOutcome === "Sold" && e("div", { className:"field" }, e("label", null, "Price, Tsh (optional)"),
+          e("input", { type:"number", inputMode:"decimal", value: formPriceTsh, placeholder: "e.g. 450000", onChange: function(ev){ setFormPriceTsh(ev.target.value); } })
+        ),
         e("div", { className:"field" }, e("label", null, "Date"),
           e("input", { type:"date", value: formDate, onChange: function(ev){ setFormDate(ev.target.value); } })),
 
@@ -992,7 +1385,9 @@ function App(){
                 placeholder: formCategory === "spray" ? "e.g. thrips on leaves, north side" : "e.g. slight yellowing before application",
                 onChange: function(ev){ setFormObservation(ev.target.value); }
               }),
-              e("div", { className:"hint" }, "What you noticed — this is worth recording every time."))
+              e("div", { className:"hint" }, "Worth recording what you noticed here every time."))
+          : formCategory === "stored_sold"
+          ? null
           : e("div", { className:"field" }, e("label", null, "Note (optional)"),
               e("input", { value: formLabel, placeholder: categoryLabel(formCategory), onChange: function(ev){ setFormLabel(ev.target.value); } })),
 
@@ -1017,7 +1412,7 @@ function App(){
     obsModalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setObsModalOpen(false); } },
       e("div", { className:"modal" },
         e("h2", null, obsEditingId ? "Edit observation" : "Add observation"),
-        e("div", { className:"hint", style:{ marginBottom:"12px" } }, "Fill in only what you actually saw today — skip the rest."),
+        e("div", { className:"hint", style:{ marginBottom:"12px" } }, "Fill in only what you actually saw today. Skip the rest."),
         e("div", { className:"field" }, e("label", null, "Date"),
           e("input", { type:"date", value: obsDate, onChange: function(ev){ setObsDate(ev.target.value); } })),
         e(OptionalSelect, { label:"Growth stage", value: obsStage, onChange: setObsStage, options: OBS_STAGE_OPTIONS }),
@@ -1029,6 +1424,8 @@ function App(){
         e(OptionalSelect, { label:"Leaf colour", value: obsLeafColor, onChange: setObsLeafColor, options: OBS_LEAF_COLOR_OPTIONS }),
         e(OptionalSelect, { label:"Pests seen", value: obsPest, onChange: setObsPest, options: OBS_PEST_OPTIONS }),
         e(OptionalSelect, { label:"Disease symptoms", value: obsDisease, onChange: setObsDisease, options: OBS_DISEASE_OPTIONS }),
+        e(OptionalSelect, { label:"Tops / bulb status", value: obsTops, onChange: setObsTops, options: OBS_TOPS_OPTIONS }),
+        e(OptionalSelect, { label:"Curing / neck condition", value: obsCuring, onChange: setObsCuring, options: OBS_CURING_OPTIONS }),
         e("div", { className:"field" }, e("label", null, "Notes (optional)"),
           e("textarea", { value: obsNotes, placeholder:"Anything else worth remembering", onChange: function(ev){ setObsNotes(ev.target.value); } })),
         e("div", { className:"modal-actions" },
@@ -1052,6 +1449,7 @@ function App(){
     e("div", { className:"bottom-nav" },
       e("div", { className:"bottom-nav-inner" },
         e("button", { className:"nav-btn" + (tab==="home" ? " active" : ""), onClick: function(){ setTab("home"); } }, IconHome(tab==="home"), e("span", null, "Home")),
+        e("button", { className:"nav-btn" + (tab==="why" ? " active" : ""), onClick: function(){ setTab("why"); } }, IconWhy(tab==="why"), e("span", null, "Why")),
         e("button", { className:"nav-btn" + (tab==="history" ? " active" : ""), onClick: function(){ setTab("history"); } }, IconHistory(tab==="history"), e("span", null, "History")),
         e("button", { className:"nav-btn" + (tab==="settings" ? " active" : ""), onClick: function(){ setTab("settings"); } }, IconSettings(tab==="settings"), e("span", null, "Settings"))
       )
