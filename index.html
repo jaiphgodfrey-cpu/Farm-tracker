@@ -66,7 +66,7 @@
   .section-label.tight{ margin:12px 0 7px; flex-shrink:0; }
   .card-list.tight{ flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; }
   .card-list.tight > .card-btn{ flex:1; min-height:0; }
-  .card-btn{ all:unset; box-sizing:border-box; display:block; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .card-btn{ box-sizing:border-box; display:block; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .card-btn .event-card{ height:100%; box-sizing:border-box; }
   .card-list.tight > .event-card{ flex:1; min-height:0; padding:9px 14px; }
   .card-list.tight .ring-wrap{ width:42px; height:42px; }
@@ -78,7 +78,7 @@
   .card-list.tight.one .ring-wrap{ width:48px; height:48px; }
 
   .advisory-card{
-    all:unset; box-sizing:border-box; display:flex; align-items:center; gap:10px; cursor:pointer;
+    box-sizing:border-box; display:flex; align-items:center; gap:10px; cursor:pointer;
     margin:12px 16px 0; padding:12px 14px; border-radius:14px; -webkit-tap-highlight-color:transparent;
     background:rgba(143,224,164,0.14); border:1px solid rgba(143,224,164,0.35);
   }
@@ -193,11 +193,8 @@
   .why-crit-expected{ color:var(--text-secondary); }
   .why-crit-observed{ color:var(--text-muted); }
 
-  .why-collapsible{ border-top:1px solid var(--border-subtle); margin-top:14px; padding-top:14px; }
-  .why-collapsible:first-of-type{ border-top:none; margin-top:14px; }
-  .why-collapsible-head{ all:unset; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; padding:2px 0; }
+  .why-card-head{ box-sizing:border-box; display:flex; align-items:flex-start; justify-content:space-between; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; gap:10px; }
   .why-collapsible-chev{ font-size:15px; font-weight:700; color:var(--text-muted); width:18px; text-align:center; flex-shrink:0; }
-  .why-collapsible-body{ margin-top:10px; }
 
   .why-source-links{ display:flex; flex-direction:column; gap:6px; }
   .why-source-link{ font-size:11.5px; color:var(--accent); text-decoration:none; word-break:break-word; }
@@ -259,6 +256,7 @@ const STORAGE_KEY = "japhe_farm_v1";
 const CATEGORIES = [
   { id: "nursery",       label: "Nursery preparation",       kind: "milestone" },
   { id: "sowing",        label: "Sowing",                     kind: "milestone" },
+  { id: "emergence",     label: "Seedlings emerged",          kind: "milestone" },
   { id: "land_prep",     label: "Land preparation",           kind: "milestone" },
   { id: "transplanting", label: "Transplanting",              kind: "milestone" },
   { id: "fertilizer",    label: "Fertilizer application",     kind: "attention" },
@@ -276,6 +274,11 @@ const DISPOSITION_OPTIONS = ["Stored", "Sold"];
 // Priority order for "Needs your attention" — most important first. The section fills with
 // whichever of these already have data, skipping any not logged yet instead of showing a blank slot.
 const FULL_PRIORITY = ["fertilizer", "spray", "weeding", "irrigation", "mulch", "custom"];
+// During the nursery/germination phase, mulch is a one-time action (see ONE_TIME_ACTIONS)
+// rather than a recurring reminder, so it's excluded from the generic priority list there.
+function priorityCatsForPhase(heroPhase){
+  return heroPhase === "germination" ? FULL_PRIORITY.filter(function(id){ return id !== "mulch"; }) : FULL_PRIORITY;
+}
 const TOP_N = 4;
 
 const SPRAY_TYPES = ["Insecticide", "Fungicide", "Herbicide", "Other"];
@@ -294,6 +297,10 @@ function obsTopsIndex(val){ return OBS_TOPS_OPTIONS.indexOf(val); }
 // Ordered — for the curing/drying phase, checked against the FiBL Africa manual's concrete
 // definition of "done curing" (papery sheath, closed soft neck, dried last leaf).
 const OBS_CURING_OPTIONS = ["Not dry yet, necks soft/open", "Papery skins forming", "Neck closed and feels soft when rubbed", "Fully cured, papery, dry, last leaf dried"];
+// Ordered — tracks the nursery's sun-exposure state after mulch removal, from no issue through
+// erecting shade to gradually taking it back down again.
+const OBS_SUNLIGHT_OPTIONS = ["No burn observed", "Mild scorch seen", "Shade erected", "Shade partially removed", "Shade fully removed"];
+function obsSunlightIndex(val){ return OBS_SUNLIGHT_OPTIONS.indexOf(val); }
 function obsCuringIndex(val){ return OBS_CURING_OPTIONS.indexOf(val); }
 
 function categoryMeta(id){
@@ -478,7 +485,12 @@ const SOURCE_LINKS = {
   G9: { name: "Utah State University Extension, onion thrips management", url: "https://extension.usu.edu/pests/ipm/notes_ag/veg-thrips" },
   KE1: { name: "KALRO, Kenya onion production practices", url: "https://kalrotimps.com/timps/14" },
   TZ2: { name: "Sokoine University of Agriculture, onion pest and variety survey (Kilosa and Kilolo, Tanzania)", url: "https://www.ajol.info/index.php/tjags/article/view/130183" },
-  UG2: { name: "Onion purple blotch farm management practices study (Uganda)", url: "https://journals.eanso.org/index.php/eajab/article/view/1262" }
+  UG2: { name: "Onion purple blotch farm management practices study (Uganda)", url: "https://journals.eanso.org/index.php/eajab/article/view/1262" },
+  KE2: { name: "FarmKenya Initiative, onion seed propagation in the nursery (Kenya)", url: "https://www.standardmedia.co.ke/farmkenya/article/2001362113/how-to-propagate-onion-seeds-in-the-nursery" },
+  UG3: { name: "How to achieve 100 percent onion germination (Monitor, Uganda)", url: "https://www.monitor.co.ug/uganda/magazines/farming/how-to-achieve-100-percent-onion-germination-3776040" },
+  MIA1: { name: "Onion Nursery Preparation Steps (Money in Agribusiness, East Africa)", url: "https://moneyinagribusiness.wordpress.com/2022/10/29/onion-nursery-preparation-steps/" },
+  DLP1: { name: "Setting up a nursery bed, shade height guidance (Don't Lose The Plot)", url: "https://dontlosetheplot.tv/en/agri-info/crops/cabbage/setting-nursery/" },
+  WAC1: { name: "Shade Cools, nursery shade management (World Agroforestry Centre)", url: "https://apps.worldagroforestry.org/NurseryManuals/Community/ShadeCools.pdf" }
 };
 
 const BASELINE_CHECKS = {
@@ -578,6 +590,81 @@ function evaluateBaselineCheck(heroPhase, subStageLabel, observations){
   };
 }
 
+// ---- One-time phase actions ----
+// Some recommendations aren't "do this repeatedly, more urgent the longer you wait" (that's
+// what FULL_PRIORITY / ACTION_GUIDANCE are for) — they're "do this exactly once, triggered by
+// a real event you log, and once done never show it again as an action, only in History."
+// Nursery mulch removal is the first case: it's paced by the farmer's own logged emergence
+// date (never a fixed calendar day, onions germinate anywhere from ~7 to 14+ days), and once
+// removed it's permanently finished for the season.
+const ONE_TIME_ACTIONS = {
+  removeNurseryMulch: {
+    appliesWhenPhase: "germination",
+    triggerCategory: "emergence",
+    doneCategory: "mulch",
+    label: "Remove nursery mulch",
+    guidance: "Remove the mulch or cover as soon as seedlings actually sprout, not on a fixed day count. Multiple regional sources agree on this trigger regardless of how long germination itself took.",
+    avoid: "Don't leave it on once seedlings have emerged; it blocks light and can weaken or scorch the shoots. Don't remove it before germination either, uncovered soil exposes the seed bed to birds, drying out, and temperature swings before the seedlings are actually up.",
+    sourceKeys: ["KE2", "UG3"]
+  }
+};
+
+// Evaluates one specific one-time action against the farmer's own logged events (never a
+// calendar assumption). Returns null if it doesn't apply to the current phase at all.
+function evaluateOneTimeAction(actionKey, heroPhase, events, seasonAnchorDate){
+  const action = ONE_TIME_ACTIONS[actionKey];
+  if(!action || action.appliesWhenPhase !== heroPhase) return null;
+  const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
+  const triggers = events.filter(function(ev){ return ev.categoryId === action.triggerCategory && inSeason(ev); });
+  if(triggers.length === 0) return { key: actionKey, action: action, status: "not-yet-triggered", triggerEvent: null, doneEvent: null };
+  const triggerEvent = triggers.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop();
+  const doneMatches = events.filter(function(ev){ return ev.categoryId === action.doneCategory && ev.date >= triggerEvent.date; });
+  const doneEvent = doneMatches.length ? doneMatches.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop() : null;
+  return { key: actionKey, action: action, status: doneEvent ? "done" : "due", triggerEvent: triggerEvent, doneEvent: doneEvent };
+}
+
+// ---- Sunlight / shade actions ----
+// A second kind of one-time action, triggered by a logged Observation field (sunlightEffect)
+// rather than a milestone event, since sun scorch and shade progress are things a farmer
+// notices and records, not a discrete dated action. Only relevant after mulch has actually
+// been removed. Shade timing is deliberately vague on exact source day-counts (the sources
+// found don't give an onion-specific number) — this is flagged honestly in the guidance text
+// rather than presented as more precise than it is.
+const SUNLIGHT_ACTIONS = {
+  erectShade: {
+    appliesWhenPhase: "germination",
+    label: "Erect a raised shade over the nursery bed",
+    guidance: "Once seedlings show sun scorch after mulch removal, regional practice is to put up a raised shade rather than re-covering the bed with mulch directly. A general vegetable-nursery guide suggests roughly 1m above the bed, high enough for air to move underneath, not resting on the seedlings.",
+    avoid: "Don't lay mulch back directly on the seedlings, that blocks light again and undoes the point of removing it. Don't build the shade too low either, it needs airflow underneath.",
+    sourceKeys: ["MIA1", "DLP1"]
+  },
+  removeShadeGradually: {
+    appliesWhenPhase: "germination",
+    label: "Start removing the shade gradually",
+    guidance: "General nursery guidance is to reduce shade gradually over about 10 days rather than pulling it all at once, no onion-specific day count was found in the sources checked, so treat 10 days as a starting point, not a fixed rule. Based on what you've seen on your own farm, aim to have it fully off well before 3 weeks.",
+    avoid: "Don't leave the shade up for weeks, seedlings that stay shaded too long stretch and grow thin and leggy reaching for light, then get shocked once the shade finally comes off, which matches what you observed in a previous season.",
+    sourceKeys: ["WAC1"]
+  }
+};
+
+function evaluateSunlightAction(actionKey, heroPhase, observations, seasonAnchorDate){
+  const action = SUNLIGHT_ACTIONS[actionKey];
+  if(!action || action.appliesWhenPhase !== heroPhase) return null;
+  const inSeason = function(o){ return !seasonAnchorDate || o.date >= seasonAnchorDate; };
+  const withField = (observations || []).filter(function(o){ return o.sunlightEffect && inSeason(o); });
+  if(withField.length === 0) return null;
+  const latest = withField.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop();
+  if(actionKey === "erectShade"){
+    if(latest.sunlightEffect !== "Mild scorch seen") return null;
+    return { key: actionKey, action: action, status: "due", triggerEvent: latest };
+  }
+  if(actionKey === "removeShadeGradually"){
+    if(latest.sunlightEffect !== "Shade erected") return null;
+    return { key: actionKey, action: action, status: "due", triggerEvent: latest };
+  }
+  return null;
+}
+
 function healthStatus(latestByCat){
   const cats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
   if(cats.length === 0) return { label: "Not enough data yet", cls: "neutral" };
@@ -636,31 +723,37 @@ function latestFieldNote(state){
 
 // Shared by HomeScreen and WhyScreen so both always agree on the current season phase.
 function computeSeasonPhase(events){
-  const sowings = events.filter(function(ev){ return ev.categoryId === "sowing"; });
-  const sowingEvent = sowings.length ? sowings.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop() : null;
-  function latestInSeason(catId){
-    if(!sowingEvent) return null;
-    const matches = events.filter(function(ev){ return ev.categoryId === catId && ev.date >= sowingEvent.date; });
+  function latestOf(catId, sinceDate){
+    const matches = events.filter(function(ev){ return ev.categoryId === catId && (!sinceDate || ev.date >= sinceDate); });
     if(matches.length === 0) return null;
     return matches.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop();
+  }
+  const sowingEvent = latestOf("sowing", null);
+  // Season anchor is normally the most recent Sowing. If a farmer bought seedlings and never
+  // logged a Sowing/nursery step at all, fall back to Transplanting so the season can still
+  // start (and correctly skips straight to the Growing phase, never a phantom nursery phase).
+  const seasonAnchor = sowingEvent || latestOf("transplanting", null);
+  function latestInSeason(catId){
+    if(!seasonAnchor) return null;
+    return latestOf(catId, seasonAnchor.date);
   }
   const transplantEvent = latestInSeason("transplanting");
   const harvestEvent = latestInSeason("harvest");
   const dispositionEvent = latestInSeason("stored_sold");
   let heroPhase = null;
-  if(sowingEvent){
+  if(seasonAnchor){
     if(dispositionEvent) heroPhase = "complete";
     else if(harvestEvent) heroPhase = "drying";
     else if(transplantEvent) heroPhase = "growing";
-    else heroPhase = "germination";
+    else if(sowingEvent) heroPhase = "germination";
   }
-  const heroAnchorEvent = heroPhase === "growing" ? transplantEvent : heroPhase === "drying" ? harvestEvent : sowingEvent;
+  const heroAnchorEvent = heroPhase === "growing" ? transplantEvent : heroPhase === "drying" ? harvestEvent : (heroPhase === "germination" ? sowingEvent : null);
   const cropAge = heroAnchorEvent ? daysSince(heroAnchorEvent.date) : null;
   const heroStageLabel = heroPhase === "growing" ? stageForTransplantDays(cropAge)
     : heroPhase === "drying" ? DRYING_LABEL
     : GERMINATION_LABEL;
   return { sowingEvent: sowingEvent, transplantEvent: transplantEvent, harvestEvent: harvestEvent, dispositionEvent: dispositionEvent,
-    heroPhase: heroPhase, cropAge: cropAge, heroStageLabel: heroStageLabel };
+    heroPhase: heroPhase, cropAge: cropAge, heroStageLabel: heroStageLabel, heroAnchorEvent: heroAnchorEvent };
 }
 
 function HomeScreen(state){
@@ -671,19 +764,34 @@ function HomeScreen(state){
     harvestEvent = seasonPhase.harvestEvent, dispositionEvent = seasonPhase.dispositionEvent,
     heroPhase = seasonPhase.heroPhase, cropAge = seasonPhase.cropAge, heroStageLabel = seasonPhase.heroStageLabel;
 
+  // Routine actions (fertilizer, mulch, etc.) are scoped to the CURRENT phase only. Without
+  // this, a nursery-time fertilizer or a mulch that was removed once early on would keep
+  // showing up as "last done" evidence for the entirely different post-transplant version of
+  // that same activity. Only events logged since the current phase's own anchor count.
   const latestByCat = useMemo(function(){
     const map = {};
+    const since = seasonPhase.heroAnchorEvent ? seasonPhase.heroAnchorEvent.date : null;
     withOrd.forEach(function(ev){
+      if(since && ev.date < since) return;
       if(!map[ev.categoryId] || ev.date > map[ev.categoryId].date) map[ev.categoryId] = ev;
     });
     return map;
-  }, [withOrd]);
+  }, [withOrd, seasonPhase.heroAnchorEvent]);
   const nextActionCats = useMemo(function(){
-    return FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; }).slice(0, 3);
-  }, [latestByCat]);
+    return priorityCatsForPhase(heroPhase).filter(function(id){ return !!latestByCat[id]; }).slice(0, 3);
+  }, [latestByCat, heroPhase]);
   const note = useMemo(function(){ return latestFieldNote(state); }, [state.events, state.observations]);
   const hasAnyEvents = state.events.length > 0;
   const engineCheck = useMemo(function(){ return evaluateBaselineCheck(heroPhase, heroStageLabel, state.observations); }, [heroPhase, heroStageLabel, state.observations]);
+  const nurseryMulchAction = useMemo(function(){
+    return evaluateOneTimeAction("removeNurseryMulch", heroPhase, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [heroPhase, state.events, seasonPhase.sowingEvent]);
+  const erectShadeAction = useMemo(function(){
+    return evaluateSunlightAction("erectShade", heroPhase, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [heroPhase, state.observations, seasonPhase.sowingEvent]);
+  const removeShadeAction = useMemo(function(){
+    return evaluateSunlightAction("removeShadeGradually", heroPhase, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [heroPhase, state.observations, seasonPhase.sowingEvent]);
 
   return e("div", { className:"home-wrap" },
     e("div", { className:"header" },
@@ -723,10 +831,40 @@ function HomeScreen(state){
       // matches the next stage's expected characteristics. Tapping it opens the full reasoning
       // on the Why tab. This never changes the season phase itself — see evaluateBaselineCheck.
       engineCheck && (engineCheck.overall === "full" || engineCheck.overall === "partial") &&
-        e("button", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); } },
+        e("div", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); }, role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, engineCheck.overall === "full" ? "✓ " + engineCheck.label : engineCheck.label),
             e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? "Your latest observation matches the guideline. Tap to see why." : "Getting close. Tap to see what's matched so far.")
+          ),
+          e("span", { className:"chev" }, "›")
+        ),
+
+      // One-time nursery actions (e.g. mulch removal) — triggered by a logged milestone
+      // (emergence), not a calendar day count, and gone for good once actually done.
+      nurseryMulchAction && nurseryMulchAction.status === "due" &&
+        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }, role:"button", tabIndex:0 },
+          e("div", { style:{ minWidth:0, flex:1 } },
+            e("div", { className:"advisory-title" }, nurseryMulchAction.action.label),
+            e("div", { className:"advisory-sub" }, "Seedlings emerged " + relativeLabel(daysSince(nurseryMulchAction.triggerEvent.date)) + ". Tap to see why.")
+          ),
+          e("span", { className:"chev" }, "›")
+        ),
+
+      // Sunlight/shade lifecycle — triggered by what a farmer actually observed, not a fixed
+      // calendar day, since sun scorch severity depends on weather, not the day count.
+      erectShadeAction && erectShadeAction.status === "due" &&
+        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-erectShade"); }, role:"button", tabIndex:0 },
+          e("div", { style:{ minWidth:0, flex:1 } },
+            e("div", { className:"advisory-title" }, erectShadeAction.action.label),
+            e("div", { className:"advisory-sub" }, "Sun scorch logged " + relativeLabel(daysSince(erectShadeAction.triggerEvent.date)) + ". Tap to see why.")
+          ),
+          e("span", { className:"chev" }, "›")
+        ),
+      removeShadeAction && removeShadeAction.status === "due" &&
+        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeShadeGradually"); }, role:"button", tabIndex:0 },
+          e("div", { style:{ minWidth:0, flex:1 } },
+            e("div", { className:"advisory-title" }, removeShadeAction.action.label),
+            e("div", { className:"advisory-sub" }, "Shade erected " + relativeLabel(daysSince(removeShadeAction.triggerEvent.date)) + ". Tap to see why.")
           ),
           e("span", { className:"chev" }, "›")
         ),
@@ -736,7 +874,7 @@ function HomeScreen(state){
       !hasAnyEvents || nextActionCats.length === 0
         ? e("div", { className:"empty-state compact" }, e("div", null, "Add fertilizer, spraying, or weeding from Settings."))
         : e("div", { className:"card-list tight" }, nextActionCats.map(function(catId){
-            return e("button", { key: catId, className:"card-btn", onClick: function(){ state.onGoToWhy(catId); } }, e(TopAttentionCard, { ev: latestByCat[catId] }));
+            return e("div", { key: catId, className:"card-btn", onClick: function(){ state.onGoToWhy(catId); }, role:"button", tabIndex:0 }, e(TopAttentionCard, { ev: latestByCat[catId] }));
           })),
 
       // What changed recently? — the newest field note.
@@ -841,7 +979,8 @@ function ObservationDetailSheet(props){
     ["Pests seen", o.pestPresence],
     ["Disease symptoms", o.diseaseSymptoms],
     ["Tops / bulb status", o.topsStatus],
-    ["Curing / neck condition", o.curingStatus]
+    ["Curing / neck condition", o.curingStatus],
+    ["Sunlight effect after mulch removal", o.sunlightEffect]
   ].filter(function(r){ return r[1]; });
   return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
     e("div", { className:"modal" },
@@ -879,20 +1018,6 @@ function ActivityRow(props){
   );
 }
 
-// A single collapsible subsection used throughout the Why screen — keeps each card short by
-// default so there's room below for other features, while still letting the farmer open any
-// section that interests them.
-function WhyCollapsible(props){
-  const [open, setOpen] = useState(!!props.defaultOpen);
-  return e("div", { className:"why-collapsible" },
-    e("button", { className:"why-collapsible-head", onClick:function(){ setOpen(!open); } },
-      e("span", { className:"why-subhead", style:{ margin:0 } }, props.title),
-      e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
-    ),
-    open && e("div", { className:"why-collapsible-body" }, props.children)
-  );
-}
-
 function WhySourceLinks(props){
   const keys = props.sourceKeys || [];
   const links = keys.map(function(k){ return SOURCE_LINKS[k]; }).filter(Boolean);
@@ -900,6 +1025,83 @@ function WhySourceLinks(props){
   return e("div", { className:"why-source-links" }, links.map(function(s, i){
     return e("a", { key:i, className:"why-source-link", href:s.url, target:"_blank", rel:"noopener noreferrer" }, s.name + " \u2197");
   }));
+}
+
+// The whole card expands/collapses as one unit — tapping anywhere on the header reveals
+// everything at once. Collapsed, it still shows the headline, status, and the guideline
+// criteria so there's something useful to read before ever tapping.
+function WhyAdvisoryCard(props){
+  const engineCheck = props.engineCheck;
+  const [open, setOpen] = useState(false);
+  return e("div", { className:"why-block", id:"why-engine" },
+    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, role:"button", tabIndex:0 },
+      e("div", { style:{ textAlign:"left" } },
+        e("div", { className:"why-title" }, engineCheck.label),
+        e("div", { className:"why-status-row" },
+          e("span", { className:"why-status-badge " + engineCheck.overall },
+            engineCheck.overall === "full" ? "Matches guideline"
+            : engineCheck.overall === "partial" ? "Partially matches"
+            : engineCheck.overall === "none" ? "Not yet matching"
+            : "No observation logged yet")
+        )
+      ),
+      e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
+    ),
+
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What the guideline expects"),
+    e("div", { className:"why-criteria-list" }, engineCheck.results.map(function(r, i){
+      return e("div", { className:"why-criterion", key:i },
+        e("div", { className:"why-crit-field" }, r.fieldLabel),
+        e("div", { className:"why-crit-expected" }, "Guideline: " + r.expectedText),
+        e("div", { className:"why-crit-observed" }, r.observedValue ? ("You recorded: " + r.observedValue) : "Not recorded yet")
+      );
+    })),
+
+    open && e(React.Fragment, null,
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What was observed"),
+      e("div", { className:"hint" }, engineCheck.observationDate
+        ? "From your observation logged " + relativeLabel(daysSince(engineCheck.observationDate)) + " (" + formatDateDisplay(engineCheck.observationDate) + ")."
+        : "No observation logged yet in this stage. Add one from Settings to see a real comparison here."),
+
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "Source"),
+      e("div", { className:"hint", style:{ marginBottom:"8px" } }, engineCheck.sourceNote),
+      e(WhySourceLinks, { sourceKeys: engineCheck.sourceKeys })
+    )
+  );
+}
+
+// A one-time, event-triggered action card (e.g. nursery mulch removal) — same visual language
+// as the observation-based advisory card, but explains a "do once" recommendation grounded in
+// a logged milestone (like emergence) instead of an observation comparison.
+function WhyOneTimeActionCard(props){
+  const data = props.data;
+  const action = data.action;
+  const [open, setOpen] = useState(false);
+  return e("div", { className:"why-block", id:"why-onetime-" + data.key },
+    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, role:"button", tabIndex:0 },
+      e("div", { style:{ textAlign:"left" } },
+        e("div", { className:"why-title" }, action.label),
+        e("div", { className:"why-status-row" },
+          e("span", { className:"why-status-badge partial" }, "Action needed")
+        )
+      ),
+      e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
+    ),
+
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What was logged"),
+    e("div", { className:"hint" }, (props.metaText || "Logged") + " " + relativeLabel(daysSince(data.triggerEvent.date)) + " (" + formatDateDisplay(data.triggerEvent.date) + ")."),
+
+    open && e(React.Fragment, null,
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to do"),
+      e("div", { className:"hint" }, action.guidance),
+
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to avoid"),
+      e("div", { className:"hint" }, action.avoid),
+
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "Source"),
+      e(WhySourceLinks, { sourceKeys: action.sourceKeys })
+    )
+  );
 }
 
 // The Why screen — answers "why is the app telling me this?" It never introduces new logic of
@@ -912,70 +1114,55 @@ function WhyScreen(props){
   const engineCheck = useMemo(function(){
     return evaluateBaselineCheck(seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations);
   }, [seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations]);
+  const nurseryMulchAction = useMemo(function(){
+    return evaluateOneTimeAction("removeNurseryMulch", seasonPhase.heroPhase, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [seasonPhase.heroPhase, state.events, seasonPhase.sowingEvent]);
+  const erectShadeAction = useMemo(function(){
+    return evaluateSunlightAction("erectShade", seasonPhase.heroPhase, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [seasonPhase.heroPhase, state.observations, seasonPhase.sowingEvent]);
+  const removeShadeAction = useMemo(function(){
+    return evaluateSunlightAction("removeShadeGradually", seasonPhase.heroPhase, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [seasonPhase.heroPhase, state.observations, seasonPhase.sowingEvent]);
   const latestByCat = useMemo(function(){
     const map = {};
-    withOrd.forEach(function(ev){ if(!map[ev.categoryId] || ev.date > map[ev.categoryId].date) map[ev.categoryId] = ev; });
+    const since = seasonPhase.heroAnchorEvent ? seasonPhase.heroAnchorEvent.date : null;
+    withOrd.forEach(function(ev){
+      if(since && ev.date < since) return;
+      if(!map[ev.categoryId] || ev.date > map[ev.categoryId].date) map[ev.categoryId] = ev;
+    });
     return map;
-  }, [withOrd]);
-  const actionCats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
+  }, [withOrd, seasonPhase.heroAnchorEvent]);
+  const actionCats = priorityCatsForPhase(seasonPhase.heroPhase).filter(function(id){ return !!latestByCat[id]; });
 
-  // Scrolls to whichever card was tapped from Home, whether that's the engine advisory or a
-  // specific routine action. Re-runs every time a new tap comes in, even if it's the same card.
+  // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
+  // one-time action, or a specific routine action. Re-runs on every new tap, even the same card.
   useEffect(function(){
     const focus = props.focus;
     if(!focus || !focus.id) return;
-    const domId = focus.id === "engine" ? "why-engine" : "why-action-" + focus.id;
+    const domId = focus.id === "engine" ? "why-engine" : focus.id.indexOf("onetime-") === 0 ? "why-" + focus.id : "why-action-" + focus.id;
     const el = document.getElementById(domId);
     if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
   }, [props.focus && props.focus.token]);
 
   return e("div", { style:{ paddingBottom:"76px" } },
-    e("div", { className:"header" }, e("div", { className:"farmname" }, "Why")),
+    e("div", { className:"header" }, e("div", { className:"farmname" }, "Current stage advisory")),
 
-    e("div", { className:"section-label" }, "Current stage advisory"),
     !seasonPhase.heroPhase
       ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, "No active season yet. Log a Sowing date to start."))
-      : !engineCheck
-      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } },
-          e("div", null, "Nothing to check at this stage (" + seasonPhase.heroStageLabel + ") right now. This screen will show something once you're at a stage boundary the engine tracks."))
-      : e("div", { className:"why-block", id:"why-engine", style:{ margin:"0 20px 20px" } },
-          e("div", { className:"why-title" }, engineCheck.label),
-          e("div", { className:"why-status-row" },
-            e("span", { className:"why-status-badge " + engineCheck.overall },
-              engineCheck.overall === "full" ? "Matches guideline"
-              : engineCheck.overall === "partial" ? "Partially matches"
-              : engineCheck.overall === "none" ? "Not yet matching"
-              : "No observation logged yet")
-          ),
-
-          e(WhyCollapsible, { title:"What the guideline expects", defaultOpen:true },
-            e("div", { className:"why-criteria-list" }, engineCheck.results.map(function(r, i){
-              return e("div", { className:"why-criterion", key:i },
-                e("div", { className:"why-crit-field" }, r.fieldLabel),
-                e("div", { className:"why-crit-expected" }, "Guideline: " + r.expectedText),
-                e("div", { className:"why-crit-observed" }, r.observedValue ? ("You recorded: " + r.observedValue) : "Not recorded yet")
-              );
-            }))
-          ),
-
-          e(WhyCollapsible, { title:"What was observed" },
-            e("div", { className:"hint" }, engineCheck.observationDate
-              ? "From your observation logged " + relativeLabel(daysSince(engineCheck.observationDate)) + " (" + formatDateDisplay(engineCheck.observationDate) + ")."
-              : "No observation logged yet in this stage. Add one from Settings to see a real comparison here.")
-          ),
-
-          e(WhyCollapsible, { title:"Source" },
-            e("div", { className:"hint", style:{ marginBottom:"8px" } }, engineCheck.sourceNote),
-            e(WhySourceLinks, { sourceKeys: engineCheck.sourceKeys })
-          ),
-
-          e(WhyCollapsible, { title:"What happens next" },
-            e("div", { className:"hint" }, engineCheck.actionHint)
-          ),
-
-          e(WhyCollapsible, { title:"What would change this" },
-            e("div", { className:"hint" }, "Logging a new Observation with updated leaf count, height, or tops/bulb status will re-run this comparison. This screen never changes your season phase by itself. Only logging the real event (Transplanting, Harvest, etc.) does that.")
-          )
+      : e(React.Fragment, null,
+          !engineCheck
+            ? null
+            : e("div", { style:{ margin:"0 20px 12px" } }, e(WhyAdvisoryCard, { engineCheck: engineCheck })),
+          nurseryMulchAction && nurseryMulchAction.status === "due" &&
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: nurseryMulchAction, metaText:"Seedlings emerged" })),
+          erectShadeAction && erectShadeAction.status === "due" &&
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: erectShadeAction, metaText:"Sun scorch logged" })),
+          removeShadeAction && removeShadeAction.status === "due" &&
+            e("div", { style:{ margin:"0 20px 20px" } }, e(WhyOneTimeActionCard, { data: removeShadeAction, metaText:"Shade erected" })),
+          !engineCheck && !(nurseryMulchAction && nurseryMulchAction.status === "due")
+            && !(erectShadeAction && erectShadeAction.status === "due") && !(removeShadeAction && removeShadeAction.status === "due") &&
+            e("div", { className:"empty-state", style:{ margin:"0 20px 20px" } },
+              e("div", null, "Nothing to check at this stage (" + seasonPhase.heroStageLabel + ") right now. This screen will show something once you're at a stage boundary the engine tracks."))
         ),
 
     e("div", { className:"section-label" }, "Routine actions"),
@@ -1299,18 +1486,19 @@ function App(){
   const [obsDisease, setObsDisease] = useState("");
   const [obsTops, setObsTops] = useState("");
   const [obsCuring, setObsCuring] = useState("");
+  const [obsSunlight, setObsSunlight] = useState("");
   const [obsNotes, setObsNotes] = useState("");
   const [obsConfirmDeleteId, setObsConfirmDeleteId] = useState(null);
 
   function openAddObsModal(){
     setObsEditingId(null); setObsDate(todayISO()); setObsStage(""); setObsLeafCount(""); setObsHeightCm("");
-    setObsMoisture(""); setObsLeafColor(""); setObsPest(""); setObsDisease(""); setObsTops(""); setObsCuring(""); setObsNotes(""); setObsModalOpen(true);
+    setObsMoisture(""); setObsLeafColor(""); setObsPest(""); setObsDisease(""); setObsTops(""); setObsCuring(""); setObsSunlight(""); setObsNotes(""); setObsModalOpen(true);
   }
   function openEditObsModal(o){
     setObsEditingId(o.id); setObsDate(o.date); setObsStage(o.observedStage || "");
     setObsLeafCount(o.leafCount != null ? String(o.leafCount) : ""); setObsHeightCm(o.heightCm != null ? String(o.heightCm) : "");
     setObsMoisture(o.soilMoisture || ""); setObsLeafColor(o.leafColor || "");
-    setObsPest(o.pestPresence || ""); setObsDisease(o.diseaseSymptoms || ""); setObsTops(o.topsStatus || ""); setObsCuring(o.curingStatus || ""); setObsNotes(o.notes || "");
+    setObsPest(o.pestPresence || ""); setObsDisease(o.diseaseSymptoms || ""); setObsTops(o.topsStatus || ""); setObsCuring(o.curingStatus || ""); setObsSunlight(o.sunlightEffect || ""); setObsNotes(o.notes || "");
     setObsModalOpen(true);
   }
   function submitObsForm(){
@@ -1325,6 +1513,7 @@ function App(){
       diseaseSymptoms: obsDisease || undefined,
       topsStatus: obsTops || undefined,
       curingStatus: obsCuring || undefined,
+      sunlightEffect: obsSunlight || undefined,
       notes: obsNotes.trim() || undefined
     };
     if(obsEditingId){ updateObservation(obsEditingId, base); }
@@ -1426,6 +1615,7 @@ function App(){
         e(OptionalSelect, { label:"Disease symptoms", value: obsDisease, onChange: setObsDisease, options: OBS_DISEASE_OPTIONS }),
         e(OptionalSelect, { label:"Tops / bulb status", value: obsTops, onChange: setObsTops, options: OBS_TOPS_OPTIONS }),
         e(OptionalSelect, { label:"Curing / neck condition", value: obsCuring, onChange: setObsCuring, options: OBS_CURING_OPTIONS }),
+        e(OptionalSelect, { label:"Sunlight effect after mulch removal", value: obsSunlight, onChange: setObsSunlight, options: OBS_SUNLIGHT_OPTIONS }),
         e("div", { className:"field" }, e("label", null, "Notes (optional)"),
           e("textarea", { value: obsNotes, placeholder:"Anything else worth remembering", onChange: function(ev){ setObsNotes(ev.target.value); } })),
         e("div", { className:"modal-actions" },
