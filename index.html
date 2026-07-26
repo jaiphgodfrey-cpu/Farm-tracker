@@ -48,7 +48,7 @@
   }
 
   .home-wrap{ height:calc(100dvh - 76px); display:flex; flex-direction:column; overflow:hidden; }
-  .home-body{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; padding-bottom:calc(4px + env(safe-area-inset-bottom)); }
+  .home-body{ flex:1; min-height:0; display:flex; flex-direction:column; overflow-y:auto; padding-bottom:calc(4px + env(safe-area-inset-bottom)); }
 
   .hero{
     margin:10px 16px 0; background:var(--accent-dark); border-radius:22px;
@@ -64,18 +64,18 @@
 
   .attention-group{ flex:1; min-height:0; display:flex; flex-direction:column; padding:0 0 6px; }
   .section-label.tight{ margin:12px 0 7px; flex-shrink:0; }
-  .card-list.tight{ flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; }
-  .card-list.tight > .card-btn{ flex:1; min-height:0; }
+  .card-list.tight{ flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; overflow-y:auto; }
+  .card-list.tight > .card-btn{ flex:0 0 auto; max-height:64px; }
   .card-btn{ box-sizing:border-box; display:block; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .card-btn .event-card{ height:100%; box-sizing:border-box; }
-  .card-list.tight > .event-card{ flex:1; min-height:0; padding:9px 14px; }
-  .card-list.tight .ring-wrap{ width:42px; height:42px; }
-  .card-list.tight .ring-num{ font-size:13px; }
-  .card-list.tight .ev-name{ font-size:13.5px; }
-  .card-list.tight .ev-sub{ font-size:11.5px; }
+  .card-list.tight .event-card{ padding:9px 14px; }
+  .card-list.tight .ring-wrap{ width:36px; height:36px; }
+  .card-list.tight .ring-num{ font-size:12px; }
+  .card-list.tight .ev-name{ font-size:13px; }
+  .card-list.tight .ev-sub{ font-size:11px; }
   .card-list.tight.one{ flex:0 0 auto; }
-  .card-list.tight.one > .event-card{ flex:0 0 auto; padding:12px 16px; }
-  .card-list.tight.one .ring-wrap{ width:48px; height:48px; }
+  .card-list.tight.one > .card-btn{ flex:0 0 auto; max-height:64px; }
+  .card-list.tight.one .ring-wrap{ width:40px; height:40px; }
 
   .advisory-card{
     box-sizing:border-box; display:flex; align-items:center; gap:10px; cursor:pointer;
@@ -339,8 +339,18 @@ function todayISO(){
   const d = new Date();
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 }
+// Lets a keyboard or screen-reader user activate a div styled as a button (role="button") with
+// Enter or Space, same as a real <button> would — used on every tappable card in the app.
+function onActivateKey(fn){
+  return function(ev){
+    if(ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); fn(); }
+  };
+}
+
 function daysSince(dateStr){
+  if(!dateStr) return 0;
   const start = new Date(dateStr + "T00:00:00");
+  if(isNaN(start.getTime())) return 0;
   const now = new Date();
   const startMid = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -362,11 +372,13 @@ function relativeLabel(days){
 
 function withOrdinals(events){
   const byCat = {};
-  events.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).forEach(function(ev){
+  const sorted = events.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+  const ordinalById = {};
+  sorted.forEach(function(ev){
     byCat[ev.categoryId] = (byCat[ev.categoryId] || 0) + 1;
-    ev._ordinal = byCat[ev.categoryId];
+    ordinalById[ev.id] = byCat[ev.categoryId];
   });
-  return events;
+  return events.map(function(ev){ return Object.assign({}, ev, { _ordinal: ordinalById[ev.id] }); });
 }
 
 function eventDisplayName(ev){
@@ -396,14 +408,39 @@ const ACTION_VERB = {
 // Short, sourced explanation shown on the Why screen for each routine action, grounded in the
 // onion knowledge database rather than a generic guess. Kept deliberately brief; the timing is
 // advisory context, not a rule the app enforces on its own.
+// Some categories mean genuinely different things in the nursery vs after transplanting (this
+// is exactly the bug flagged: fertilizer guidance was showing the 30/45-day post-transplant
+// schedule even while still in the nursery, which made no sense before transplanting had
+// happened). Where that's true, the entry has separate germination/growing variants; where the
+// guidance is the same either way (spray, mulch, custom), it stays a single flat entry.
 const ACTION_GUIDANCE = {
-  fertilizer: { text: "Typically split into two applications, around 30 and 45 days after transplanting, then stopped at least 4 weeks before harvest. Too much, too late, tends to cause thick necks and poor storage.", sourceKeys: ["G1", "KE1", "G7"] },
-  spray: { text: "Best done on a regular watch and respond basis rather than a fixed schedule. Weekly scouting for thrips (the dominant regional pest) is more reliable than a calendar date.", sourceKeys: ["TZ2", "UG2", "G7"] },
-  weeding: { text: "Onions compete poorly with weeds due to their shallow, upright growth habit. Staying on top of this matters more early in the season, before the canopy fills in.", sourceKeys: ["G3", "G7"] },
-  irrigation: { text: "Light and frequent early on, substantially more at bulbing (the highest-demand stage), reduced and then stopped 2-4 weeks before harvest.", sourceKeys: ["G1", "G7", "G8", "G9"] },
+  fertilizer: {
+    germination: { text: "In the nursery, fertilizer is normally a single basal application worked into the bed when you prepare it, for example around 20g DAP per square metre, or well-rotted manure, not a repeating routine through the nursery weeks. The 30/45-day split top-dress schedule only starts once the seedlings are transplanted.", sourceKeys: ["KE1"] },
+    growing: { text: "Typically split into two applications, around 30 and 45 days after transplanting, then stopped at least 4 weeks before harvest. Too much, too late, tends to cause thick necks and poor storage.", sourceKeys: ["G1", "KE1", "G7"] }
+  },
+  spray: { text: "Best done on a regular watch and respond basis rather than a fixed schedule. Weekly scouting for thrips (the dominant regional pest) is more reliable than a calendar date, in the nursery as much as after transplanting.", sourceKeys: ["TZ2", "UG2", "G7"] },
+  weeding: {
+    germination: { text: "Keep the nursery bed weeded by hand right through the nursery weeks, tiny seedlings are especially vulnerable to competition while this small and shallow-rooted.", sourceKeys: ["NG1", "G7"] },
+    growing: { text: "Onions compete poorly with weeds due to their shallow, upright growth habit. Staying on top of this matters more early in the season, before the canopy fills in.", sourceKeys: ["G3", "G7"] }
+  },
+  irrigation: {
+    germination: { text: "Light and frequent, avoid waterlogging, this is when damping-off risk is highest for young seedlings.", sourceKeys: ["G1", "KE1"] },
+    growing: { text: "Light and frequent early on, substantially more at bulbing (the highest-demand stage), reduced and then stopped 2-4 weeks before harvest.", sourceKeys: ["G1", "G7", "G8", "G9"] }
+  },
   mulch: { text: "Helps conserve moisture and suppress weeds early on, but is best removed once bulbing starts so it doesn't interfere with bulb enlargement.", sourceKeys: ["G7"] },
   custom: { text: "No specific guideline for a custom activity. This is whatever you've defined it to be.", sourceKeys: [] }
 };
+// Resolves a possibly phase-split ACTION_GUIDANCE entry down to a single {text, sourceKeys}
+// for the current phase. Falls back sensibly if a phase-specific variant isn't defined.
+function guidanceFor(catId, heroPhase){
+  const g = ACTION_GUIDANCE[catId];
+  if(!g) return { text:"", sourceKeys:[] };
+  if(g.germination || g.growing){
+    if(heroPhase === "germination" && g.germination) return g.germination;
+    return g.growing || g.germination;
+  }
+  return g;
+}
 function nextActionTitle(ev){
   if(ev.categoryId === "fertilizer"){
     const detail = ev.fertilizerType ? (" (" + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "") + ")") : "";
@@ -490,7 +527,8 @@ const SOURCE_LINKS = {
   UG3: { name: "How to achieve 100 percent onion germination (Monitor, Uganda)", url: "https://www.monitor.co.ug/uganda/magazines/farming/how-to-achieve-100-percent-onion-germination-3776040" },
   MIA1: { name: "Onion Nursery Preparation Steps (Money in Agribusiness, East Africa)", url: "https://moneyinagribusiness.wordpress.com/2022/10/29/onion-nursery-preparation-steps/" },
   DLP1: { name: "Setting up a nursery bed, shade height guidance (Don't Lose The Plot)", url: "https://dontlosetheplot.tv/en/agri-info/crops/cabbage/setting-nursery/" },
-  WAC1: { name: "Shade Cools, nursery shade management (World Agroforestry Centre)", url: "https://apps.worldagroforestry.org/NurseryManuals/Community/ShadeCools.pdf" }
+  WAC1: { name: "Shade Cools, nursery shade management (World Agroforestry Centre)", url: "https://apps.worldagroforestry.org/NurseryManuals/Community/ShadeCools.pdf" },
+  NG1: { name: "Onion Production and Management under Irrigation (Nigeria agricultural extension)", url: "https://naerls.gov.ng/wp-content/uploads/2022/11/Onion-Productiona-and-Management-under-Irrigation.pdf" }
 };
 
 const BASELINE_CHECKS = {
@@ -831,7 +869,7 @@ function HomeScreen(state){
       // matches the next stage's expected characteristics. Tapping it opens the full reasoning
       // on the Why tab. This never changes the season phase itself — see evaluateBaselineCheck.
       engineCheck && (engineCheck.overall === "full" || engineCheck.overall === "partial") &&
-        e("div", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); }, role:"button", tabIndex:0 },
+        e("div", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("engine"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, engineCheck.overall === "full" ? "✓ " + engineCheck.label : engineCheck.label),
             e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? "Your latest observation matches the guideline. Tap to see why." : "Getting close. Tap to see what's matched so far.")
@@ -842,7 +880,7 @@ function HomeScreen(state){
       // One-time nursery actions (e.g. mulch removal) — triggered by a logged milestone
       // (emergence), not a calendar day count, and gone for good once actually done.
       nurseryMulchAction && nurseryMulchAction.status === "due" &&
-        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }, role:"button", tabIndex:0 },
+        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, nurseryMulchAction.action.label),
             e("div", { className:"advisory-sub" }, "Seedlings emerged " + relativeLabel(daysSince(nurseryMulchAction.triggerEvent.date)) + ". Tap to see why.")
@@ -853,7 +891,7 @@ function HomeScreen(state){
       // Sunlight/shade lifecycle — triggered by what a farmer actually observed, not a fixed
       // calendar day, since sun scorch severity depends on weather, not the day count.
       erectShadeAction && erectShadeAction.status === "due" &&
-        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-erectShade"); }, role:"button", tabIndex:0 },
+        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-erectShade"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-erectShade"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, erectShadeAction.action.label),
             e("div", { className:"advisory-sub" }, "Sun scorch logged " + relativeLabel(daysSince(erectShadeAction.triggerEvent.date)) + ". Tap to see why.")
@@ -861,7 +899,7 @@ function HomeScreen(state){
           e("span", { className:"chev" }, "›")
         ),
       removeShadeAction && removeShadeAction.status === "due" &&
-        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeShadeGradually"); }, role:"button", tabIndex:0 },
+        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeShadeGradually"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeShadeGradually"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, removeShadeAction.action.label),
             e("div", { className:"advisory-sub" }, "Shade erected " + relativeLabel(daysSince(removeShadeAction.triggerEvent.date)) + ". Tap to see why.")
@@ -874,7 +912,7 @@ function HomeScreen(state){
       !hasAnyEvents || nextActionCats.length === 0
         ? e("div", { className:"empty-state compact" }, e("div", null, "Add fertilizer, spraying, or weeding from Settings."))
         : e("div", { className:"card-list tight" }, nextActionCats.map(function(catId){
-            return e("div", { key: catId, className:"card-btn", onClick: function(){ state.onGoToWhy(catId); }, role:"button", tabIndex:0 }, e(TopAttentionCard, { ev: latestByCat[catId] }));
+            return e("div", { key: catId, className:"card-btn", onClick: function(){ state.onGoToWhy(catId); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy(catId); }), role:"button", tabIndex:0 }, e(TopAttentionCard, { ev: latestByCat[catId] }));
           })),
 
       // What changed recently? — the newest field note.
@@ -981,7 +1019,7 @@ function ObservationDetailSheet(props){
     ["Tops / bulb status", o.topsStatus],
     ["Curing / neck condition", o.curingStatus],
     ["Sunlight effect after mulch removal", o.sunlightEffect]
-  ].filter(function(r){ return r[1]; });
+  ].filter(function(r){ return r[1] != null; });
   return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
     e("div", { className:"modal" },
       e("h2", null, "Field observation"),
@@ -1004,7 +1042,7 @@ function ActivityRow(props){
   const cat = props.cat, ev = props.ev, onOpen = props.onOpen;
   const isMilestone = categoryMeta(cat.id).kind === "milestone";
   const days = ev ? daysSince(ev.date) : null;
-  return e("div", { className:"event-card" + (!ev ? " placeholder" : ""), key: cat.id, onDoubleClick: function(){ onOpen(cat, ev); } },
+  return e("div", { className:"event-card" + (!ev ? " placeholder" : ""), key: cat.id, onClick: function(){ onOpen(cat, ev); }, onKeyDown: onActivateKey(function(){ onOpen(cat, ev); }), role:"button", tabIndex:0 },
     ev
       ? e(RingGauge, { days: days, neutral: isMilestone })
       : e("div", { className:"ring-wrap" },
@@ -1013,7 +1051,7 @@ function ActivityRow(props){
         ),
     e("div", { className:"ev-mid" },
       e("div", { className:"ev-name" }, cat.label),
-      e("div", { className:"ev-sub" }, ev ? relativeLabel(days) : "Not logged yet · double-tap to add")
+      e("div", { className:"ev-sub" }, ev ? relativeLabel(days) : "Not logged yet · tap to add")
     )
   );
 }
@@ -1034,7 +1072,7 @@ function WhyAdvisoryCard(props){
   const engineCheck = props.engineCheck;
   const [open, setOpen] = useState(false);
   return e("div", { className:"why-block", id:"why-engine" },
-    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, role:"button", tabIndex:0 },
+    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, onKeyDown: onActivateKey(function(){ setOpen(!open); }), role:"button", tabIndex:0 },
       e("div", { style:{ textAlign:"left" } },
         e("div", { className:"why-title" }, engineCheck.label),
         e("div", { className:"why-status-row" },
@@ -1078,7 +1116,7 @@ function WhyOneTimeActionCard(props){
   const action = data.action;
   const [open, setOpen] = useState(false);
   return e("div", { className:"why-block", id:"why-onetime-" + data.key },
-    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, role:"button", tabIndex:0 },
+    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, onKeyDown: onActivateKey(function(){ setOpen(!open); }), role:"button", tabIndex:0 },
       e("div", { style:{ textAlign:"left" } },
         e("div", { className:"why-title" }, action.label),
         e("div", { className:"why-status-row" },
@@ -1170,7 +1208,7 @@ function WhyScreen(props){
       ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, "No routine actions logged yet."))
       : e("div", { style:{ margin:"0 20px" } }, actionCats.map(function(catId){
           const ev = latestByCat[catId];
-          const guidance = ACTION_GUIDANCE[catId] || { text:"", sourceKeys:[] };
+          const guidance = guidanceFor(catId, seasonPhase.heroPhase);
           return e("div", { className:"why-block", id:"why-action-" + catId, style:{ marginBottom:"12px" }, key:catId },
             e("div", { className:"why-title" }, nextActionTitle(ev)),
             e("div", { className:"hint", style:{ marginBottom:"8px" } }, "Last done " + relativeLabel(daysSince(ev.date)) + " (" + formatDateDisplay(ev.date) + ")"),
@@ -1209,7 +1247,7 @@ function HistoryScreen(props){
     e("div", { className:"header" }, e("div", { className:"farmname" }, "History")),
 
     e("div", { className:"section-label" }, "All activities"),
-    e("div", { className:"hint", style:{ margin:"0 20px 10px" } }, "Double-tap any activity for full details, editing, or delete."),
+    e("div", { className:"hint", style:{ margin:"0 20px 10px" } }, "Tap any activity for full details, editing, or delete."),
     e("div", { className:"card-list" }, CATEGORIES.map(function(cat){
       return e(ActivityRow, { key: cat.id, cat: cat, ev: latestByCat[cat.id] || null, onOpen: function(c, ev){ setDetail({ cat: c, ev: ev }); } });
     })),
@@ -1228,7 +1266,7 @@ function HistoryScreen(props){
         ? e("div", { className:"empty-state" }, e("div", null, "No observations logged yet.") )
         : e("div", { className:"card-list" }, sortedObs.map(function(o){
             const days = daysSince(o.date);
-            return e("div", { className:"event-card", key: o.id, onDoubleClick: function(){ setObsDetail(o); } },
+            return e("div", { className:"event-card", key: o.id, onClick: function(){ setObsDetail(o); }, onKeyDown: onActivateKey(function(){ setObsDetail(o); }), role:"button", tabIndex:0 },
               e(RingGauge, { days: days, neutral: true }),
               e("div", { className:"ev-mid" },
                 e("div", { className:"ev-name" }, observationSummaryText(o)),
@@ -1454,7 +1492,11 @@ function App(){
   }
   const isRichCategory = formCategory === "fertilizer" || formCategory === "spray";
   function submitForm(){
-    const base = { categoryId: formCategory, date: formDate };
+    const base = {
+      categoryId: formCategory, date: formDate,
+      sprayType: undefined, observation: undefined, fertilizerType: undefined, quantityKg: undefined,
+      outcome: undefined, quantityGunia: undefined, priceTsh: undefined, label: undefined
+    };
     if(formCategory === "spray"){ base.sprayType = formSprayType; base.observation = formObservation.trim() || undefined; }
     else if(formCategory === "fertilizer"){
       base.fertilizerType = formFertilizerType.trim() || undefined;
@@ -1551,7 +1593,7 @@ function App(){
           e("input", { value: formFertilizerType, placeholder: "e.g. CAN, DAP, Urea, NPK", onChange: function(ev){ setFormFertilizerType(ev.target.value); } })
         ),
         formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Quantity (kg)"),
-          e("input", { type:"number", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
+          e("input", { type:"number", min:"0", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
         ),
         formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, "Outcome"),
           e("select", { value: formOutcome, onChange: function(ev){ setFormOutcome(ev.target.value); } },
@@ -1559,10 +1601,10 @@ function App(){
           )
         ),
         formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, "Quantity (gunia)"),
-          e("input", { type:"number", inputMode:"numeric", value: formQuantityGunia, placeholder: "e.g. 6", onChange: function(ev){ setFormQuantityGunia(ev.target.value); } })
+          e("input", { type:"number", min:"0", inputMode:"numeric", value: formQuantityGunia, placeholder: "e.g. 6", onChange: function(ev){ setFormQuantityGunia(ev.target.value); } })
         ),
         formCategory === "stored_sold" && formOutcome === "Sold" && e("div", { className:"field" }, e("label", null, "Price, Tsh (optional)"),
-          e("input", { type:"number", inputMode:"decimal", value: formPriceTsh, placeholder: "e.g. 450000", onChange: function(ev){ setFormPriceTsh(ev.target.value); } })
+          e("input", { type:"number", min:"0", inputMode:"decimal", value: formPriceTsh, placeholder: "e.g. 450000", onChange: function(ev){ setFormPriceTsh(ev.target.value); } })
         ),
         e("div", { className:"field" }, e("label", null, "Date"),
           e("input", { type:"date", value: formDate, onChange: function(ev){ setFormDate(ev.target.value); } })),
@@ -1606,9 +1648,9 @@ function App(){
           e("input", { type:"date", value: obsDate, onChange: function(ev){ setObsDate(ev.target.value); } })),
         e(OptionalSelect, { label:"Growth stage", value: obsStage, onChange: setObsStage, options: OBS_STAGE_OPTIONS }),
         e("div", { className:"field" }, e("label", null, "Leaf count (optional)"),
-          e("input", { type:"number", inputMode:"numeric", value: obsLeafCount, placeholder:"e.g. 4", onChange: function(ev){ setObsLeafCount(ev.target.value); } })),
+          e("input", { type:"number", min:"0", inputMode:"numeric", value: obsLeafCount, placeholder:"e.g. 4", onChange: function(ev){ setObsLeafCount(ev.target.value); } })),
         e("div", { className:"field" }, e("label", null, "Plant height, cm (optional)"),
-          e("input", { type:"number", inputMode:"decimal", value: obsHeightCm, placeholder:"e.g. 15", onChange: function(ev){ setObsHeightCm(ev.target.value); } })),
+          e("input", { type:"number", min:"0", inputMode:"decimal", value: obsHeightCm, placeholder:"e.g. 15", onChange: function(ev){ setObsHeightCm(ev.target.value); } })),
         e(OptionalSelect, { label:"Soil moisture", value: obsMoisture, onChange: setObsMoisture, options: OBS_MOISTURE_OPTIONS }),
         e(OptionalSelect, { label:"Leaf colour", value: obsLeafColor, onChange: setObsLeafColor, options: OBS_LEAF_COLOR_OPTIONS }),
         e(OptionalSelect, { label:"Pests seen", value: obsPest, onChange: setObsPest, options: OBS_PEST_OPTIONS }),
