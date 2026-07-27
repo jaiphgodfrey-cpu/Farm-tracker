@@ -83,6 +83,9 @@
     background:rgba(143,224,164,0.14); border:1px solid rgba(143,224,164,0.35);
   }
   .advisory-card.partial{ background:rgba(240,198,117,0.14); border-color:rgba(240,198,117,0.35); }
+  .advisory-card.threat-medium{ background:rgba(240,198,117,0.14); border-color:rgba(240,198,117,0.35); }
+  .advisory-card.threat-high{ background:rgba(240,161,127,0.16); border-color:rgba(240,161,127,0.4); }
+  .advisory-card.threat-critical{ background:rgba(224,110,110,0.18); border-color:rgba(224,110,110,0.5); }
   .advisory-card .advisory-title{ font-size:13.5px; font-weight:700; color:var(--text-primary); }
   .advisory-card .advisory-sub{ font-size:11.5px; color:var(--text-secondary); margin-top:2px; }
   .advisory-card .chev{ color:var(--text-muted); font-size:16px; margin-left:auto; }
@@ -195,6 +198,9 @@
 
   .why-card-head{ box-sizing:border-box; display:flex; align-items:flex-start; justify-content:space-between; width:100%; cursor:pointer; -webkit-tap-highlight-color:transparent; gap:10px; }
   .why-collapsible-chev{ font-size:15px; font-weight:700; color:var(--text-muted); width:18px; text-align:center; flex-shrink:0; }
+  .why-block.threat-medium{ border-color:rgba(240,198,117,0.4); }
+  .why-block.threat-high{ border-color:rgba(240,161,127,0.45); }
+  .why-block.threat-critical{ border-color:rgba(224,110,110,0.55); background:rgba(224,110,110,0.06); }
 
   .why-source-links{ display:flex; flex-direction:column; gap:6px; }
   .why-source-link{ font-size:11.5px; color:var(--accent); text-decoration:none; word-break:break-word; }
@@ -289,7 +295,14 @@ const OBS_STAGE_OPTIONS = ["Germination & establishment", "Vegetative growth", "
 const OBS_MOISTURE_OPTIONS = ["Wet", "Moist", "Dry"];
 const OBS_LEAF_COLOR_OPTIONS = ["Dark green", "Green", "Light green", "Yellowing"];
 const OBS_PEST_OPTIONS = ["None seen", "Thrips", "Cutworms", "Other"];
-const OBS_DISEASE_OPTIONS = ["None seen", "Spots", "Rot", "Wilting"];
+// Widened from generic categories ("Spots"/"Rot"/"Wilting") to specific, disease-indicative
+// descriptions verified against the FiBL Africa manual (G7). This is how "different words that
+// mean the same thing" gets solved here: not by fuzzy-matching many narrow raw values, but by
+// designing the dropdown options themselves to already be specific and descriptive, so one
+// clear tap reliably identifies the real symptom. See SYMPTOM_GROUPS below for how new
+// equivalent phrasings could be added later without touching any matching logic.
+const OBS_DISEASE_OPTIONS = ["None seen", "Silvery-white patches or streaks", "Purple lesions with yellow/orange border", "Grey-white oval spots with a silvery halo", "Purple-grey velvety growth, leaf tips dying back", "Soft or rotting neck", "Other"];
+const OBS_WEATHER_OPTIONS = ["Not noted", "Dry", "Humid", "Heavy rain recently"];
 // Ordered — later entries represent a more advanced tops/bulb state. Order matters for the
 // baseline-comparison engine below, which checks "at least as advanced as X".
 const OBS_TOPS_OPTIONS = ["Upright, no bulb yet", "Base starting to swell", "Bulbs visibly forming", "Tops starting to flop/yellow", "About half tops fallen", "Most tops fallen and dry"];
@@ -491,13 +504,15 @@ function TimelineItem(ev){
 // Phase 1 (sowing → transplanting): a single constant label — no point sub-staging by days
 // here since the real trigger for moving on is the Transplanting event, not a day threshold.
 const GERMINATION_LABEL = "Germination & establishment";
+const COMPLETE_LABEL = "Season complete";
 // Phase 2 (transplanting → harvest): day thresholds are defaults (TARI-based typical onion
 // timings) and are meant to be checked against logged Observations over time, not treated as fact.
 const POST_TRANSPLANT_STAGES = [
   { max: 25, label: "Vegetative growth" },
   { max: 55, label: "Bulb development" },
   { max: 85, label: "Maturation" },
-  { max: Infinity, label: "Ready for harvest check" }
+  { max: 110, label: "Ready for harvest check" },
+  { max: Infinity, label: "Late, check if harvest was missed" }
 ];
 function stageForTransplantDays(days){
   for(var i = 0; i < POST_TRANSPLANT_STAGES.length; i++){ if(days <= POST_TRANSPLANT_STAGES[i].max) return POST_TRANSPLANT_STAGES[i].label; }
@@ -592,7 +607,7 @@ const BASELINE_CHECKS = {
 // Picks the one check relevant to the current phase/sub-stage, evaluates it against the most
 // recent Observation, and returns everything the "Why" screen needs to explain itself. Never
 // changes the logged-event phase — advisory only, per design decision.
-function evaluateBaselineCheck(heroPhase, subStageLabel, observations){
+function evaluateBaselineCheck(heroPhase, subStageLabel, observations, seasonAnchorDate){
   let checkKey = null;
   Object.keys(BASELINE_CHECKS).forEach(function(key){
     const c = BASELINE_CHECKS[key];
@@ -606,7 +621,12 @@ function evaluateBaselineCheck(heroPhase, subStageLabel, observations){
   if(!checkKey) return null;
   const check = BASELINE_CHECKS[checkKey];
 
-  const latest = (observations || []).slice().sort(function(a,b){ return b.date.localeCompare(a.date); })[0] || null;
+  // Only consider observations logged this season — otherwise a leftover observation from a
+  // previous (or pre-season) cycle can be picked up as "the latest" and used to justify advice
+  // about the current season.
+  const inSeason = function(o){ return !seasonAnchorDate || o.date >= seasonAnchorDate; };
+  const seasonObservations = (observations || []).filter(inSeason);
+  const latest = seasonObservations.slice().sort(function(a,b){ return b.date.localeCompare(a.date); })[0] || null;
 
   const results = check.criteria.map(function(c){
     const outcome = latest ? c.test(latest) : null; // true=match, false=not yet, null=not recorded
@@ -656,7 +676,13 @@ function evaluateOneTimeAction(actionKey, heroPhase, events, seasonAnchorDate){
   const triggers = events.filter(function(ev){ return ev.categoryId === action.triggerCategory && inSeason(ev); });
   if(triggers.length === 0) return { key: actionKey, action: action, status: "not-yet-triggered", triggerEvent: null, doneEvent: null };
   const triggerEvent = triggers.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop();
-  const doneMatches = events.filter(function(ev){ return ev.categoryId === action.doneCategory && ev.date >= triggerEvent.date; });
+  // Use the season anchor (not the exact trigger date) as the cutoff: the real question is
+  // "did this done-action happen this season?", not "did it happen after this specific trigger
+  // log entry?". Otherwise a done-event logged slightly before the trigger event (e.g. mulch
+  // removed the day before emergence was logged), or before a later duplicate trigger event
+  // (e.g. a second emergence log), is wrongly rejected.
+  const doneSince = seasonAnchorDate || triggerEvent.date;
+  const doneMatches = events.filter(function(ev){ return ev.categoryId === action.doneCategory && ev.date >= doneSince; });
   const doneEvent = doneMatches.length ? doneMatches.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop() : null;
   return { key: actionKey, action: action, status: doneEvent ? "done" : "due", triggerEvent: triggerEvent, doneEvent: doneEvent };
 }
@@ -689,18 +715,118 @@ function evaluateSunlightAction(actionKey, heroPhase, observations, seasonAnchor
   const action = SUNLIGHT_ACTIONS[actionKey];
   if(!action || action.appliesWhenPhase !== heroPhase) return null;
   const inSeason = function(o){ return !seasonAnchorDate || o.date >= seasonAnchorDate; };
-  const withField = (observations || []).filter(function(o){ return o.sunlightEffect && inSeason(o); });
+  const withField = (observations || []).filter(function(o){ return o.sunlightEffect && inSeason(o); }).sort(function(a,b){ return a.date.localeCompare(b.date); });
   if(withField.length === 0) return null;
-  const latest = withField.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop();
+  const latest = withField[withField.length - 1];
   if(actionKey === "erectShade"){
     if(latest.sunlightEffect !== "Mild scorch seen") return null;
     return { key: actionKey, action: action, status: "due", triggerEvent: latest };
   }
   if(actionKey === "removeShadeGradually"){
-    if(latest.sunlightEffect !== "Shade erected") return null;
-    return { key: actionKey, action: action, status: "due", triggerEvent: latest };
+    // Track this as a small state machine over the whole season's observations, not just the
+    // single latest one: find the most recent "Shade erected" reading, then check whether
+    // anything at or beyond "Shade partially removed" was logged after it. This still flags the
+    // advisory even if the farmer's very next logged observation jumps straight to "fully
+    // removed" — previously that skip made the engine forget "erected" ever happened, and also
+    // correctly resolves the advisory once it happens, rather than leaving it stuck forever.
+    const erectedEvents = withField.filter(function(o){ return o.sunlightEffect === "Shade erected"; });
+    if(erectedEvents.length === 0) return null;
+    const lastErected = erectedEvents[erectedEvents.length - 1];
+    const resolvedAfter = withField.some(function(o){ return o.date > lastErected.date && obsSunlightIndex(o.sunlightEffect) >= obsSunlightIndex("Shade partially removed"); });
+    if(resolvedAfter) return null;
+    return { key: actionKey, action: action, status: "due", triggerEvent: lastErected };
   }
   return null;
+}
+
+// ---- Threat Map (pest/disease diagnosis) ----
+// "I see X on my leaves -> it's likely Y." Structured-field only, same discipline as the rest
+// of the engine: no free-text parsing. The widened-vocabulary idea is handled here by grouping
+// equivalent phrasings under one concept (SYMPTOM_GROUPS) rather than fuzzy-matching many raw
+// values — a new equivalent dropdown option can be added to a group later without touching any
+// match function. Every rule here was checked against the actual FiBL Africa manual (G7) text,
+// not just plausible-sounding agronomy: Stemphylium was dropped entirely (no real source found
+// for it in G7 or any African-region source checked), Botrytis was split into the two genuinely
+// distinct diseases the source describes (a foliar Leaf Blight vs. the storage-stage Neck Rot,
+// which the source states is "often only visible on removal from storage" — not a mid-season
+// field symptom), and Downy mildew's match was rewritten to the source's actual described
+// symptoms instead of an invented field.
+const SYMPTOM_GROUPS = {
+  silveryLeafDamage: ["Silvery-white patches or streaks"],
+  purpleLesions: ["Purple lesions with yellow/orange border"],
+  leafBlightSpots: ["Grey-white oval spots with a silvery halo"],
+  downyMildewGrowth: ["Purple-grey velvety growth, leaf tips dying back"],
+  softNeck: ["Soft or rotting neck"]
+};
+function symptomIn(value, groupKey){ return (SYMPTOM_GROUPS[groupKey] || []).indexOf(value) !== -1; }
+function weatherIsHumid(note){ return note === "Humid" || note === "Heavy rain recently"; }
+
+const THREAT_RULES = [
+  {
+    id: "thrips",
+    label: "Thrips (Thrips tabaci)",
+    severity: "high",
+    stages: ["Vegetative growth", "Bulb development", "Maturation", "Ready for harvest check", "Late, check if harvest was missed"],
+    match: function(o){ return o.pestPresence === "Thrips" || symptomIn(o.diseaseSymptoms, "silveryLeafDamage"); },
+    message: "Thrips are the dominant regional pest, causing up to 60% yield loss when severe. Scout weekly and consider neem oil or an approved insecticide.",
+    avoid: "Don't wait for heavy infestation before acting; thrips damage also opens plants to secondary infections.",
+    sourceKeys: ["TZ2", "UG2", "G9", "G7"]
+  },
+  {
+    id: "purple_blotch",
+    label: "Purple blotch (Alternaria porri)",
+    severity: "high",
+    stages: ["Vegetative growth", "Bulb development", "Maturation"],
+    match: function(o){ return symptomIn(o.diseaseSymptoms, "purpleLesions"); },
+    message: "Purple blotch develops over a wide temperature range but spreads fastest in humid conditions. Improve airflow between plants and avoid overhead irrigation.",
+    avoid: "Don't leave infected crop residue in the field afterward, it's a source of ongoing infection. No direct organic treatment is well established once symptoms appear, so prevention (spacing, drainage, rotation) matters most.",
+    sourceKeys: ["UG2", "G7"]
+  },
+  {
+    id: "leaf_blight",
+    label: "Leaf blight (Botrytis squamosa)",
+    severity: "medium",
+    stages: ["Vegetative growth", "Bulb development", "Maturation"],
+    match: function(o){ return symptomIn(o.diseaseSymptoms, "leafBlightSpots"); },
+    message: "A foliar disease favoured by warm conditions (16-28\u00b0C). Remove infected onion remains and volunteer plants, and avoid overwatering the leaves.",
+    avoid: "Don't over-apply nitrogen, it encourages the lush growth this disease favours.",
+    sourceKeys: ["G7"]
+  },
+  {
+    id: "downy_mildew",
+    label: "Downy mildew (Peronospora species)",
+    severity: "high",
+    stages: ["Vegetative growth", "Bulb development"],
+    match: function(o){ return symptomIn(o.diseaseSymptoms, "downyMildewGrowth") && weatherIsHumid(o.weatherNote); },
+    message: "Favoured by cool, very humid nights with wet leaves in the morning. Improve ventilation and avoid overhead irrigation, especially in the evening.",
+    avoid: "No effective organic fungicide is established for this once it appears, prevention matters far more than a cure here.",
+    sourceKeys: ["G7"]
+  },
+  {
+    id: "neck_rot",
+    label: "Neck rot (Botrytis species)",
+    severity: "critical",
+    stages: ["Maturation", "Ready for harvest check", "Late, check if harvest was missed", "Curing / drying"],
+    match: function(o){ return symptomIn(o.diseaseSymptoms, "softNeck"); },
+    message: "This is primarily a storage disease, damage is often only visible after weeks in storage, not necessarily right now. Harvest only once necks have fallen over naturally, avoid harvesting in the rain, and dry bulbs thoroughly and quickly.",
+    avoid: "Don't store any bulb showing a soft neck alongside healthy ones, sort it out first.",
+    sourceKeys: ["G7"]
+  }
+];
+
+// Evaluates every threat rule against the most recent in-season observation. Only runs during
+// the growing/drying phases, since these are field/harvest-stage diseases, not nursery ones.
+function evaluateThreatMap(heroPhase, heroStageLabel, observations, seasonAnchorDate){
+  if(heroPhase !== "growing" && heroPhase !== "drying") return [];
+  const inSeason = function(o){ return !seasonAnchorDate || o.date >= seasonAnchorDate; };
+  const seasonObs = (observations || []).filter(inSeason).sort(function(a,b){ return a.date.localeCompare(b.date); });
+  const latest = seasonObs[seasonObs.length - 1];
+  if(!latest) return [];
+  return THREAT_RULES.filter(function(rule){
+    return rule.stages.indexOf(heroStageLabel) !== -1 && rule.match(latest);
+  }).map(function(rule){
+    return { id: rule.id, label: rule.label, severity: rule.severity, message: rule.message, avoid: rule.avoid, sourceKeys: rule.sourceKeys, observationDate: latest.date };
+  });
 }
 
 function healthStatus(latestByCat){
@@ -778,17 +904,39 @@ function computeSeasonPhase(events){
   const transplantEvent = latestInSeason("transplanting");
   const harvestEvent = latestInSeason("harvest");
   const dispositionEvent = latestInSeason("stored_sold");
+
+  // Walk the milestone sequence (sowing -> transplant -> harvest -> disposition) and only
+  // advance the phase when the next milestone's date is at or after the one before it. This
+  // stops two things: a leftover disposition/harvest from an earlier season sealing a new
+  // season shut just because it shares the same (old) sowing anchor (a new Transplanting
+  // logged after the old season's Stored/Sold should reopen the season as "growing", not stay
+  // "complete"), and a backdated/out-of-order harvest producing an impossible phase.
   let heroPhase = null;
+  let phaseAnchorDate = null;
   if(seasonAnchor){
-    if(dispositionEvent) heroPhase = "complete";
-    else if(harvestEvent) heroPhase = "drying";
-    else if(transplantEvent) heroPhase = "growing";
-    else if(sowingEvent) heroPhase = "germination";
+    heroPhase = sowingEvent ? "germination" : "growing";
+    phaseAnchorDate = seasonAnchor.date;
+    if(transplantEvent && transplantEvent.date >= phaseAnchorDate){
+      heroPhase = "growing";
+      phaseAnchorDate = transplantEvent.date;
+    }
+    if(harvestEvent && harvestEvent.date >= phaseAnchorDate){
+      heroPhase = "drying";
+      phaseAnchorDate = harvestEvent.date;
+    }
+    if(dispositionEvent && dispositionEvent.date >= phaseAnchorDate){
+      heroPhase = "complete";
+      phaseAnchorDate = dispositionEvent.date;
+    }
   }
-  const heroAnchorEvent = heroPhase === "growing" ? transplantEvent : heroPhase === "drying" ? harvestEvent : (heroPhase === "germination" ? sowingEvent : null);
+  const heroAnchorEvent = heroPhase === "growing" ? transplantEvent
+    : heroPhase === "drying" ? harvestEvent
+    : heroPhase === "complete" ? dispositionEvent
+    : (heroPhase === "germination" ? sowingEvent : null);
   const cropAge = heroAnchorEvent ? daysSince(heroAnchorEvent.date) : null;
   const heroStageLabel = heroPhase === "growing" ? stageForTransplantDays(cropAge)
     : heroPhase === "drying" ? DRYING_LABEL
+    : heroPhase === "complete" ? COMPLETE_LABEL
     : GERMINATION_LABEL;
   return { sowingEvent: sowingEvent, transplantEvent: transplantEvent, harvestEvent: harvestEvent, dispositionEvent: dispositionEvent,
     heroPhase: heroPhase, cropAge: cropAge, heroStageLabel: heroStageLabel, heroAnchorEvent: heroAnchorEvent };
@@ -820,7 +968,7 @@ function HomeScreen(state){
   }, [latestByCat, heroPhase]);
   const note = useMemo(function(){ return latestFieldNote(state); }, [state.events, state.observations]);
   const hasAnyEvents = state.events.length > 0;
-  const engineCheck = useMemo(function(){ return evaluateBaselineCheck(heroPhase, heroStageLabel, state.observations); }, [heroPhase, heroStageLabel, state.observations]);
+  const engineCheck = useMemo(function(){ return evaluateBaselineCheck(heroPhase, heroStageLabel, state.observations, sowingEvent ? sowingEvent.date : null); }, [heroPhase, heroStageLabel, state.observations, sowingEvent]);
   const nurseryMulchAction = useMemo(function(){
     return evaluateOneTimeAction("removeNurseryMulch", heroPhase, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [heroPhase, state.events, seasonPhase.sowingEvent]);
@@ -830,6 +978,9 @@ function HomeScreen(state){
   const removeShadeAction = useMemo(function(){
     return evaluateSunlightAction("removeShadeGradually", heroPhase, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [heroPhase, state.observations, seasonPhase.sowingEvent]);
+  const threats = useMemo(function(){
+    return evaluateThreatMap(heroPhase, heroStageLabel, state.observations, sowingEvent ? sowingEvent.date : null);
+  }, [heroPhase, heroStageLabel, state.observations, sowingEvent]);
 
   return e("div", { className:"home-wrap" },
     e("div", { className:"header" },
@@ -906,6 +1057,17 @@ function HomeScreen(state){
           ),
           e("span", { className:"chev" }, "›")
         ),
+
+      // Threat Map — pest/disease diagnosis from the latest logged symptom observation.
+      threats.map(function(t){
+        return e("div", { key: t.id, className:"advisory-card threat-" + t.severity, onClick: function(){ state.onGoToWhy("threat-" + t.id); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("threat-" + t.id); }), role:"button", tabIndex:0 },
+          e("div", { style:{ minWidth:0, flex:1 } },
+            e("div", { className:"advisory-title" }, t.label),
+            e("div", { className:"advisory-sub" }, "From your observation " + relativeLabel(daysSince(t.observationDate)) + ". Tap to see why.")
+          ),
+          e("span", { className:"chev" }, "›")
+        );
+      }),
 
       // What must I do now? — up to three tracked activities, most important first.
       e("div", { className:"section-label tight" }, "Next action"),
@@ -1018,7 +1180,8 @@ function ObservationDetailSheet(props){
     ["Disease symptoms", o.diseaseSymptoms],
     ["Tops / bulb status", o.topsStatus],
     ["Curing / neck condition", o.curingStatus],
-    ["Sunlight effect after mulch removal", o.sunlightEffect]
+    ["Sunlight effect after mulch removal", o.sunlightEffect],
+    ["Recent weather", o.weatherNote]
   ].filter(function(r){ return r[1] != null; });
   return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
     e("div", { className:"modal" },
@@ -1142,6 +1305,38 @@ function WhyOneTimeActionCard(props){
   );
 }
 
+// A diagnosed pest/disease threat — same collapsible-card language as the rest of Why, styled
+// by severity so a critical storage-disease warning reads differently from a medium one.
+function WhyThreatCard(props){
+  const t = props.threat;
+  const [open, setOpen] = useState(false);
+  return e("div", { className:"why-block threat-" + t.severity, id:"why-threat-" + t.id },
+    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, onKeyDown: onActivateKey(function(){ setOpen(!open); }), role:"button", tabIndex:0 },
+      e("div", { style:{ textAlign:"left" } },
+        e("div", { className:"why-title" }, t.label),
+        e("div", { className:"why-status-row" },
+          e("span", { className:"why-status-badge " + (t.severity === "critical" ? "none" : t.severity === "high" ? "partial" : "no-data") }, t.severity.charAt(0).toUpperCase() + t.severity.slice(1) + " concern")
+        )
+      ),
+      e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
+    ),
+
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What was logged"),
+    e("div", { className:"hint" }, "From your observation " + relativeLabel(daysSince(t.observationDate)) + " (" + formatDateDisplay(t.observationDate) + ")."),
+
+    open && e(React.Fragment, null,
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to do"),
+      e("div", { className:"hint" }, t.message),
+
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to avoid"),
+      e("div", { className:"hint" }, t.avoid),
+
+      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "Source"),
+      e(WhySourceLinks, { sourceKeys: t.sourceKeys })
+    )
+  );
+}
+
 // The Why screen — answers "why is the app telling me this?" It never introduces new logic of
 // its own; it only explains the engine advisory (evaluateBaselineCheck) and the routine action
 // reminders (ACTION_GUIDANCE) that already drive Home. Nothing here changes app state.
@@ -1150,7 +1345,7 @@ function WhyScreen(props){
   const withOrd = useMemo(function(){ return withOrdinals(state.events.slice()); }, [state.events]);
   const seasonPhase = useMemo(function(){ return computeSeasonPhase(state.events); }, [state.events]);
   const engineCheck = useMemo(function(){
-    return evaluateBaselineCheck(seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations);
+    return evaluateBaselineCheck(seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations]);
   const nurseryMulchAction = useMemo(function(){
     return evaluateOneTimeAction("removeNurseryMulch", seasonPhase.heroPhase, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
@@ -1161,6 +1356,9 @@ function WhyScreen(props){
   const removeShadeAction = useMemo(function(){
     return evaluateSunlightAction("removeShadeGradually", seasonPhase.heroPhase, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [seasonPhase.heroPhase, state.observations, seasonPhase.sowingEvent]);
+  const threats = useMemo(function(){
+    return evaluateThreatMap(seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [seasonPhase.heroPhase, seasonPhase.heroStageLabel, state.observations, seasonPhase.sowingEvent]);
   const latestByCat = useMemo(function(){
     const map = {};
     const since = seasonPhase.heroAnchorEvent ? seasonPhase.heroAnchorEvent.date : null;
@@ -1173,17 +1371,27 @@ function WhyScreen(props){
   const actionCats = priorityCatsForPhase(seasonPhase.heroPhase).filter(function(id){ return !!latestByCat[id]; });
 
   // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
-  // one-time action, or a specific routine action. Re-runs on every new tap, even the same card.
+  // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
   useEffect(function(){
     const focus = props.focus;
     if(!focus || !focus.id) return;
-    const domId = focus.id === "engine" ? "why-engine" : focus.id.indexOf("onetime-") === 0 ? "why-" + focus.id : "why-action-" + focus.id;
+    const domId = focus.id === "engine" ? "why-engine"
+      : focus.id.indexOf("onetime-") === 0 ? "why-" + focus.id
+      : focus.id.indexOf("threat-") === 0 ? "why-" + focus.id
+      : "why-action-" + focus.id;
     const el = document.getElementById(domId);
     if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
   }, [props.focus && props.focus.token]);
 
   return e("div", { style:{ paddingBottom:"76px" } },
     e("div", { className:"header" }, e("div", { className:"farmname" }, "Current stage advisory")),
+
+    threats.length > 0 && e(React.Fragment, null,
+      e("div", { className:"section-label" }, "Field health"),
+      e("div", { style:{ margin:"0 20px 20px" } }, threats.map(function(t){
+        return e("div", { key: t.id, style:{ marginBottom:"12px" } }, e(WhyThreatCard, { threat: t }));
+      }))
+    ),
 
     !seasonPhase.heroPhase
       ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, "No active season yet. Log a Sowing date to start."))
@@ -1529,18 +1737,19 @@ function App(){
   const [obsTops, setObsTops] = useState("");
   const [obsCuring, setObsCuring] = useState("");
   const [obsSunlight, setObsSunlight] = useState("");
+  const [obsWeather, setObsWeather] = useState("");
   const [obsNotes, setObsNotes] = useState("");
   const [obsConfirmDeleteId, setObsConfirmDeleteId] = useState(null);
 
   function openAddObsModal(){
     setObsEditingId(null); setObsDate(todayISO()); setObsStage(""); setObsLeafCount(""); setObsHeightCm("");
-    setObsMoisture(""); setObsLeafColor(""); setObsPest(""); setObsDisease(""); setObsTops(""); setObsCuring(""); setObsSunlight(""); setObsNotes(""); setObsModalOpen(true);
+    setObsMoisture(""); setObsLeafColor(""); setObsPest(""); setObsDisease(""); setObsTops(""); setObsCuring(""); setObsSunlight(""); setObsWeather(""); setObsNotes(""); setObsModalOpen(true);
   }
   function openEditObsModal(o){
     setObsEditingId(o.id); setObsDate(o.date); setObsStage(o.observedStage || "");
     setObsLeafCount(o.leafCount != null ? String(o.leafCount) : ""); setObsHeightCm(o.heightCm != null ? String(o.heightCm) : "");
     setObsMoisture(o.soilMoisture || ""); setObsLeafColor(o.leafColor || "");
-    setObsPest(o.pestPresence || ""); setObsDisease(o.diseaseSymptoms || ""); setObsTops(o.topsStatus || ""); setObsCuring(o.curingStatus || ""); setObsSunlight(o.sunlightEffect || ""); setObsNotes(o.notes || "");
+    setObsPest(o.pestPresence || ""); setObsDisease(o.diseaseSymptoms || ""); setObsTops(o.topsStatus || ""); setObsCuring(o.curingStatus || ""); setObsSunlight(o.sunlightEffect || ""); setObsWeather(o.weatherNote || ""); setObsNotes(o.notes || "");
     setObsModalOpen(true);
   }
   function submitObsForm(){
@@ -1556,6 +1765,7 @@ function App(){
       topsStatus: obsTops || undefined,
       curingStatus: obsCuring || undefined,
       sunlightEffect: obsSunlight || undefined,
+      weatherNote: obsWeather || undefined,
       notes: obsNotes.trim() || undefined
     };
     if(obsEditingId){ updateObservation(obsEditingId, base); }
@@ -1658,6 +1868,7 @@ function App(){
         e(OptionalSelect, { label:"Tops / bulb status", value: obsTops, onChange: setObsTops, options: OBS_TOPS_OPTIONS }),
         e(OptionalSelect, { label:"Curing / neck condition", value: obsCuring, onChange: setObsCuring, options: OBS_CURING_OPTIONS }),
         e(OptionalSelect, { label:"Sunlight effect after mulch removal", value: obsSunlight, onChange: setObsSunlight, options: OBS_SUNLIGHT_OPTIONS }),
+        e(OptionalSelect, { label:"Recent weather", value: obsWeather, onChange: setObsWeather, options: OBS_WEATHER_OPTIONS }),
         e("div", { className:"field" }, e("label", null, "Notes (optional)"),
           e("textarea", { value: obsNotes, placeholder:"Anything else worth remembering", onChange: function(ev){ setObsNotes(ev.target.value); } })),
         e("div", { className:"modal-actions" },
