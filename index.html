@@ -636,7 +636,7 @@ function evaluateBaselineCheck(heroPhase, subStageLabel, observations, seasonAnc
   const provided = results.filter(function(r){ return r.outcome !== null; });
   let overall;
   if(!latest || provided.length === 0) overall = "no-data";
-  else if(provided.every(function(r){ return r.outcome === true; })) overall = "full";
+  else if(provided.length === results.length && provided.every(function(r){ return r.outcome === true; })) overall = "full";
   else if(provided.some(function(r){ return r.outcome === true; })) overall = "partial";
   else overall = "none";
 
@@ -964,7 +964,15 @@ function HomeScreen(state){
     return map;
   }, [withOrd, seasonPhase.heroAnchorEvent]);
   const nextActionCats = useMemo(function(){
-    return priorityCatsForPhase(heroPhase).filter(function(id){ return !!latestByCat[id]; }).slice(0, 3);
+    // Ranked by days-since-last-done, most overdue first — not by a fixed category order.
+    // Previously this just sliced the first 3 categories in FULL_PRIORITY's fixed order, so a
+    // category logged yesterday could push out one that's weeks overdue simply by coming
+    // earlier in that list.
+    return priorityCatsForPhase(heroPhase)
+      .filter(function(id){ return !!latestByCat[id]; })
+      .slice()
+      .sort(function(a, b){ return daysSince(latestByCat[b].date) - daysSince(latestByCat[a].date); })
+      .slice(0, 3);
   }, [latestByCat, heroPhase]);
   const note = useMemo(function(){ return latestFieldNote(state); }, [state.events, state.observations]);
   const hasAnyEvents = state.events.length > 0;
@@ -1368,7 +1376,8 @@ function WhyScreen(props){
     });
     return map;
   }, [withOrd, seasonPhase.heroAnchorEvent]);
-  const actionCats = priorityCatsForPhase(seasonPhase.heroPhase).filter(function(id){ return !!latestByCat[id]; });
+  const actionCats = priorityCatsForPhase(seasonPhase.heroPhase).filter(function(id){ return !!latestByCat[id]; })
+    .sort(function(a, b){ return daysSince(latestByCat[b].date) - daysSince(latestByCat[a].date); });
 
   // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
   // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
