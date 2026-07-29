@@ -201,6 +201,10 @@
   .why-block.threat-medium{ border-color:rgba(240,198,117,0.4); }
   .why-block.threat-high{ border-color:rgba(240,161,127,0.45); }
   .why-block.threat-critical{ border-color:rgba(224,110,110,0.55); background:rgba(224,110,110,0.06); }
+  .why-block.guardrail-medium{ border-color:rgba(240,198,117,0.35); }
+  .why-block.guardrail-low{ border-color:var(--border-subtle); }
+  .why-block.guardrail-high{ border-color:rgba(240,161,127,0.45); }
+  .why-block.guardrail-critical{ border-color:rgba(224,110,110,0.55); background:rgba(224,110,110,0.06); }
 
   .why-source-links{ display:flex; flex-direction:column; gap:6px; }
   .why-source-link{ font-size:11.5px; color:var(--accent); text-decoration:none; word-break:break-word; }
@@ -288,6 +292,10 @@ function priorityCatsForPhase(heroPhase){
 const TOP_N = 4;
 
 const SPRAY_TYPES = ["Insecticide", "Fungicide", "Herbicide", "Other"];
+// Structured product list — was a free-text field before, which meant safety checks could
+// never reliably detect a risky product without guessing at spelling/wording. These are the
+// specific products the fertilizer-safety chemistry rules below actually distinguish between.
+const FERTILIZER_TYPES = ["DAP", "Urea", "CAN", "Calcium Nitrate", "NPK compound", "Compost / manure", "Other"];
 
 // Observation form options — all optional at entry. Objective (measurable) fields are kept
 // separate from subjective (perception) fields so it's clear which is which later on.
@@ -369,6 +377,14 @@ function daysSince(dateStr){
   const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((nowMid - startMid) / 86400000);
 }
+// Pure date-diff between two logged dates (positive when b is after a) — used by Guardrails,
+// which check the relationship between two of the farmer's own logged dates, not "now."
+function daysBetween(dateA, dateB){
+  if(!dateA || !dateB) return null;
+  const a = new Date(dateA + "T00:00:00"), b = new Date(dateB + "T00:00:00");
+  if(isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+  return Math.round((b - a) / 86400000);
+}
 function formatDateDisplay(dateStr){
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
@@ -428,7 +444,7 @@ const ACTION_VERB = {
 // guidance is the same either way (spray, mulch, custom), it stays a single flat entry.
 const ACTION_GUIDANCE = {
   fertilizer: {
-    germination: { text: "In the nursery, fertilizer is normally a single basal application worked into the bed when you prepare it, for example around 20g DAP per square metre, or well-rotted manure, not a repeating routine through the nursery weeks. The 30/45-day split top-dress schedule only starts once the seedlings are transplanted.", sourceKeys: ["KE1"] },
+    germination: { text: "In the nursery, fertilizer is normally a single basal application worked into the bed when you prepare it, for example around 20g DAP per square metre, or well-rotted manure, not a repeating routine through the nursery weeks. The 30/45-day split top-dress schedule only starts once the seedlings are transplanted. Once seedlings have actually sprouted, DAP, Urea, and CAN should not be applied near them at all, they can burn or dehydrate young roots. Compost, manure, or a dilute liquid feed after true leaves appear are the safe options at that point.", sourceKeys: ["KE1", "MCN1", "FCN1"] },
     growing: { text: "Typically split into two applications, around 30 and 45 days after transplanting, then stopped at least 4 weeks before harvest. Too much, too late, tends to cause thick necks and poor storage.", sourceKeys: ["G1", "KE1", "G7"] }
   },
   spray: { text: "Best done on a regular watch and respond basis rather than a fixed schedule. Weekly scouting for thrips (the dominant regional pest) is more reliable than a calendar date, in the nursery as much as after transplanting.", sourceKeys: ["TZ2", "UG2", "G7"] },
@@ -543,7 +559,10 @@ const SOURCE_LINKS = {
   MIA1: { name: "Onion Nursery Preparation Steps (Money in Agribusiness, East Africa)", url: "https://moneyinagribusiness.wordpress.com/2022/10/29/onion-nursery-preparation-steps/" },
   DLP1: { name: "Setting up a nursery bed, shade height guidance (Don't Lose The Plot)", url: "https://dontlosetheplot.tv/en/agri-info/crops/cabbage/setting-nursery/" },
   WAC1: { name: "Shade Cools, nursery shade management (World Agroforestry Centre)", url: "https://apps.worldagroforestry.org/NurseryManuals/Community/ShadeCools.pdf" },
-  NG1: { name: "Onion Production and Management under Irrigation (Nigeria agricultural extension)", url: "https://naerls.gov.ng/wp-content/uploads/2022/11/Onion-Productiona-and-Management-under-Irrigation.pdf" }
+  NG1: { name: "Onion Production and Management under Irrigation (Nigeria agricultural extension)", url: "https://naerls.gov.ng/wp-content/uploads/2022/11/Onion-Productiona-and-Management-under-Irrigation.pdf" },
+  MCN1: { name: "Diammonium Phosphate (DAP), ammonia release near germinating seeds (Mosaic Crop Nutrition)", url: "https://www.cropnutrition.com/resource-library/diammonium-phosphate/" },
+  FCN1: { name: "Maximum Safe Rates of Fertilizers, relative seedling toxicity of DAP/urea/MAP (Field Crop News)", url: "https://fieldcropnews.com/2025/05/maximum-safe-rates-of-fertilizers/" },
+  PU1: { name: "Fertilizer Compatibility, calcium and phosphate lock-up (Purdue University Vegetable Crops Hotline)", url: "https://vegcropshotline.org/article/fertilizer-compatibility/" }
 };
 
 const BASELINE_CHECKS = {
@@ -829,6 +848,128 @@ function evaluateThreatMap(heroPhase, heroStageLabel, observations, seasonAnchor
   });
 }
 
+// ---- Guardrails ----
+// "You just did X at a time that contradicts the sourced guidance -> a note for next time."
+// This is retrospective, educational feedback about an event that already happened, not an
+// action still needed — so it's shown on Why as awareness, not as a Home advisory card
+// demanding action. Checked against the farmer's own logged dates relative to other logged
+// milestones (transplant, harvest), never a free-floating calendar assumption.
+const GUARDRAILS = [
+  {
+    id: "fertilizer_too_late",
+    label: "Fertilizer applied later than the recommended window",
+    categoryId: "fertilizer",
+    severity: "medium",
+    check: function(ev, ctx){
+      if(!ctx.transplantEvent) return false;
+      const dpt = daysBetween(ctx.transplantEvent.date, ev.date);
+      if(dpt == null || dpt < 0) return false;
+      if(ctx.harvestEvent){
+        const daysBeforeHarvest = daysBetween(ev.date, ctx.harvestEvent.date);
+        if(daysBeforeHarvest != null && daysBeforeHarvest < 28) return true;
+      }
+      return dpt > 55;
+    },
+    message: "Guidance is to split fertilizer around 30 and 45 days after transplanting, then stop at least 4 weeks before harvest. This application looks later than that window.",
+    avoid: "Late, heavy nitrogen tends to cause thick necks and poor storage rather than more yield at this point in the season.",
+    sourceKeys: ["G1", "KE1", "G7"]
+  },
+  {
+    id: "irrigation_too_close_to_harvest",
+    label: "Irrigation logged close to harvest",
+    categoryId: "irrigation",
+    severity: "low",
+    check: function(ev, ctx){
+      if(!ctx.harvestEvent) return false;
+      const daysBeforeHarvest = daysBetween(ev.date, ctx.harvestEvent.date);
+      return daysBeforeHarvest != null && daysBeforeHarvest >= 0 && daysBeforeHarvest < 14;
+    },
+    message: "Guidance is to reduce and stop irrigation 2-4 weeks before harvest. This watering was logged less than 2 weeks before the harvest date.",
+    avoid: "Watering too close to harvest can affect curing and storage quality.",
+    sourceKeys: ["G1", "G7", "G8", "G9"]
+  }
+];
+
+function evaluateGuardrails(events, seasonAnchorDate, transplantEvent, harvestEvent){
+  const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
+  const ctx = { transplantEvent: transplantEvent, harvestEvent: harvestEvent };
+  const flags = [];
+  GUARDRAILS.forEach(function(rule){
+    events.filter(function(ev){ return ev.categoryId === rule.categoryId && inSeason(ev); }).forEach(function(ev){
+      if(rule.check(ev, ctx)){
+        flags.push({ id: rule.id, label: rule.label, severity: rule.severity, message: rule.message, avoid: rule.avoid, sourceKeys: rule.sourceKeys, eventDate: ev.date });
+      }
+    });
+  });
+  return flags;
+}
+
+// ---- Fertilizer Safety ----
+// Crop-agnostic on purpose: this is basic fertilizer chemistry (ammonia toxicity to
+// germinating seeds/young roots, and calcium-phosphate lock-up when incompatible products are
+// mixed), not an onion-specific fact. The same rules apply whatever gets planted in this
+// nursery bed next. Verified against real sources before shipping — the DAP-ammonia mechanism
+// against the exact source the user provided (MCN1), the relative toxicity ranking (urea more
+// dangerous than DAP, DAP more dangerous than MAP/compost) against Field Crop News (FCN1), and
+// the calcium+phosphate lock-up chemistry against Purdue's Vegetable Crops Hotline (PU1).
+const FERTILIZER_RISK_PROFILE = {
+  "DAP": { riskyNearSeedlings: true, containsCalcium: false, containsPhosphate: true },
+  "Urea": { riskyNearSeedlings: true, containsCalcium: false, containsPhosphate: false },
+  "CAN": { riskyNearSeedlings: true, containsCalcium: true, containsPhosphate: false },
+  "Calcium Nitrate": { riskyNearSeedlings: true, containsCalcium: true, containsPhosphate: false },
+  "NPK compound": { riskyNearSeedlings: true, containsCalcium: false, containsPhosphate: true },
+  "Compost / manure": { riskyNearSeedlings: false, containsCalcium: false, containsPhosphate: false },
+  "Other": { riskyNearSeedlings: false, containsCalcium: false, containsPhosphate: false }
+};
+function fertilizersIncompatible(typeA, typeB){
+  const a = FERTILIZER_RISK_PROFILE[typeA], b = FERTILIZER_RISK_PROFILE[typeB];
+  if(!a || !b) return false;
+  // Phosphate + calcium is the classic lock-up: they form insoluble calcium phosphate.
+  return (a.containsPhosphate && b.containsCalcium) || (a.containsCalcium && b.containsPhosphate);
+}
+
+function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent){
+  const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
+  const fertEvents = events.filter(function(ev){ return ev.categoryId === "fertilizer" && ev.fertilizerType && inSeason(ev); })
+    .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  const flags = [];
+
+  fertEvents.forEach(function(ev){
+    const profile = FERTILIZER_RISK_PROFILE[ev.fertilizerType];
+    // A risky product logged after the sowing day itself (not same-day bed prep) means it was
+    // most likely applied at or near already-germinating seedlings, not mixed into the bed
+    // before anything was planted.
+    if(profile && profile.riskyNearSeedlings && sowingEvent && ev.date > sowingEvent.date){
+      flags.push({
+        id: "fertilizer_unsafe_near_seedlings",
+        label: ev.fertilizerType + " applied near young seedlings",
+        severity: "critical",
+        message: ev.fertilizerType + " releases ammonia and/or a strong salt effect close to seeds and roots, which can dehydrate or burn young seedlings. Compost, well-rotted manure, or a dilute liquid feed after true leaves appear are the safe nursery options.",
+        avoid: "Don't apply " + ev.fertilizerType + " directly to a nursery bed or close to seedling roots. If used at all, it belongs mixed into the soil well before sowing, several cm away from where the seed goes.",
+        sourceKeys: ["MCN1", "FCN1"],
+        eventDate: ev.date
+      });
+    }
+  });
+
+  for(var i = 1; i < fertEvents.length; i++){
+    const prev = fertEvents[i-1], curr = fertEvents[i];
+    const gapDays = daysBetween(prev.date, curr.date);
+    if(gapDays != null && gapDays <= 7 && fertilizersIncompatible(prev.fertilizerType, curr.fertilizerType)){
+      flags.push({
+        id: "fertilizer_incompatible_pair",
+        label: prev.fertilizerType + " and " + curr.fertilizerType + " applied close together",
+        severity: "high",
+        message: "Phosphate-based fertilizers (like DAP or NPK compounds) and calcium-based fertilizers (like CAN or calcium nitrate) react together to form calcium phosphate, which is insoluble and useless to the plant.",
+        avoid: "Space these out, or pick one or the other for a given application rather than combining them.",
+        sourceKeys: ["PU1"],
+        eventDate: curr.date
+      });
+    }
+  }
+  return flags;
+}
+
 function healthStatus(latestByCat){
   const cats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
   if(cats.length === 0) return { label: "Not enough data yet", cls: "neutral" };
@@ -989,6 +1130,9 @@ function HomeScreen(state){
   const threats = useMemo(function(){
     return evaluateThreatMap(heroPhase, heroStageLabel, state.observations, sowingEvent ? sowingEvent.date : null);
   }, [heroPhase, heroStageLabel, state.observations, sowingEvent]);
+  const fertilizerSafetyFlags = useMemo(function(){
+    return evaluateFertilizerSafety(state.events, sowingEvent ? sowingEvent.date : null, sowingEvent).filter(function(f){ return f.severity === "critical" || f.severity === "high"; });
+  }, [state.events, sowingEvent]);
 
   return e("div", { className:"home-wrap" },
     e("div", { className:"header" },
@@ -1072,6 +1216,18 @@ function HomeScreen(state){
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, t.label),
             e("div", { className:"advisory-sub" }, "From your observation " + relativeLabel(daysSince(t.observationDate)) + ". Tap to see why.")
+          ),
+          e("span", { className:"chev" }, "›")
+        );
+      }),
+
+      // Fertilizer Safety — critical/high severity flags only; the milder timing guardrails
+      // stay Why-only since there's nothing urgent left to act on there.
+      fertilizerSafetyFlags.map(function(f, i){
+        return e("div", { key: f.id + i, className:"advisory-card threat-" + f.severity, onClick: function(){ state.onGoToWhy("fertsafety-" + i); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertsafety-" + i); }), role:"button", tabIndex:0 },
+          e("div", { style:{ minWidth:0, flex:1 } },
+            e("div", { className:"advisory-title" }, f.label),
+            e("div", { className:"advisory-sub" }, "Logged " + relativeLabel(daysSince(f.eventDate)) + ". Tap to see why.")
           ),
           e("span", { className:"chev" }, "›")
         );
@@ -1378,6 +1534,11 @@ function WhyScreen(props){
   }, [withOrd, seasonPhase.heroAnchorEvent]);
   const actionCats = priorityCatsForPhase(seasonPhase.heroPhase).filter(function(id){ return !!latestByCat[id]; })
     .sort(function(a, b){ return daysSince(latestByCat[b].date) - daysSince(latestByCat[a].date); });
+  const guardrailFlags = useMemo(function(){
+    const timing = evaluateGuardrails(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.transplantEvent, seasonPhase.harvestEvent);
+    const fertSafety = evaluateFertilizerSafety(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.sowingEvent);
+    return fertSafety.concat(timing);
+  }, [state.events, seasonPhase.sowingEvent, seasonPhase.transplantEvent, seasonPhase.harvestEvent]);
 
   // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
   // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
@@ -1387,6 +1548,7 @@ function WhyScreen(props){
     const domId = focus.id === "engine" ? "why-engine"
       : focus.id.indexOf("onetime-") === 0 ? "why-" + focus.id
       : focus.id.indexOf("threat-") === 0 ? "why-" + focus.id
+      : focus.id.indexOf("fertsafety") === 0 ? "why-guardrails-section"
       : "why-action-" + focus.id;
     const el = document.getElementById(domId);
     if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
@@ -1433,7 +1595,20 @@ function WhyScreen(props){
             e("div", { className:"hint", style:{ marginBottom:"8px" } }, guidance.text),
             e(WhySourceLinks, { sourceKeys: guidance.sourceKeys })
           );
-        }))
+        })),
+
+    guardrailFlags.length > 0 && e(React.Fragment, null,
+      e("div", { className:"section-label", id:"why-guardrails-section" }, "Guardrail notes"),
+      e("div", { style:{ margin:"0 20px" } }, guardrailFlags.map(function(g, i){
+        return e("div", { className:"why-block guardrail-" + g.severity, style:{ marginBottom:"12px" }, key: g.id + i },
+          e("div", { className:"why-title" }, g.label),
+          e("div", { className:"hint", style:{ marginBottom:"8px" } }, "Logged " + formatDateDisplay(g.eventDate)),
+          e("div", { className:"why-subhead", style:{ marginBottom:"6px" } }, "For next time"),
+          e("div", { className:"hint", style:{ marginBottom:"8px" } }, g.message + " " + g.avoid),
+          e(WhySourceLinks, { sourceKeys: g.sourceKeys })
+        );
+      }))
+    )
   );
 }
 
@@ -1681,7 +1856,7 @@ function App(){
   const [formCategory, setFormCategory] = useState(CATEGORIES[0].id);
   const [formDate, setFormDate] = useState(todayISO());
   const [formSprayType, setFormSprayType] = useState(SPRAY_TYPES[0]);
-  const [formFertilizerType, setFormFertilizerType] = useState("");
+  const [formFertilizerType, setFormFertilizerType] = useState(FERTILIZER_TYPES[0]);
   const [formQuantityKg, setFormQuantityKg] = useState("");
   const [formObservation, setFormObservation] = useState("");
   const [formLabel, setFormLabel] = useState("");
@@ -1692,7 +1867,7 @@ function App(){
 
   function openAddModal(presetCategory){
     setEditingId(null); setFormCategory(presetCategory || CATEGORIES[0].id); setFormDate(todayISO());
-    setFormSprayType(SPRAY_TYPES[0]); setFormFertilizerType(""); setFormQuantityKg("");
+    setFormSprayType(SPRAY_TYPES[0]); setFormFertilizerType(FERTILIZER_TYPES[0]); setFormQuantityKg("");
     setFormObservation(""); setFormLabel("");
     setFormOutcome(DISPOSITION_OPTIONS[0]); setFormQuantityGunia(""); setFormPriceTsh("");
     setModalOpen(true);
@@ -1700,7 +1875,7 @@ function App(){
   function openEditModal(ev){
     setEditingId(ev.id); setFormCategory(ev.categoryId); setFormDate(ev.date);
     setFormSprayType(ev.sprayType || SPRAY_TYPES[0]);
-    setFormFertilizerType(ev.fertilizerType || ""); setFormQuantityKg(ev.quantityKg != null ? String(ev.quantityKg) : "");
+    setFormFertilizerType(ev.fertilizerType || FERTILIZER_TYPES[0]); setFormQuantityKg(ev.quantityKg != null ? String(ev.quantityKg) : "");
     setFormObservation(ev.observation || ""); setFormLabel(ev.label || "");
     setFormOutcome(ev.outcome || DISPOSITION_OPTIONS[0]);
     setFormQuantityGunia(ev.quantityGunia != null ? String(ev.quantityGunia) : "");
@@ -1809,7 +1984,9 @@ function App(){
           )
         ),
         formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Fertilizer type"),
-          e("input", { value: formFertilizerType, placeholder: "e.g. CAN, DAP, Urea, NPK", onChange: function(ev){ setFormFertilizerType(ev.target.value); } })
+          e("select", { value: formFertilizerType, onChange: function(ev){ setFormFertilizerType(ev.target.value); } },
+            FERTILIZER_TYPES.map(function(t){ return e("option", { value:t, key:t }, t); })
+          )
         ),
         formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Quantity (kg)"),
           e("input", { type:"number", min:"0", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
