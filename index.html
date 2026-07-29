@@ -410,8 +410,45 @@ function withOrdinals(events){
   return events.map(function(ev){ return Object.assign({}, ev, { _ordinal: ordinalById[ev.id] }); });
 }
 
+// A transplanting event may span several days rather than happening in one day (see
+// transplantAnchorDate below for why this matters to the engine). When it does, ev.date is the
+// start and ev.endDate is the completion date; this renders that as a range instead of implying
+// a single-day event.
+function transplantSpanDays(ev){
+  if(!ev || ev.categoryId !== "transplanting" || !ev.endDate || ev.endDate <= ev.date) return null;
+  const gap = daysBetween(ev.date, ev.endDate);
+  return gap == null ? null : gap + 1;
+}
+// The date the engine treats as "transplanting happened" for age (DAT) calculations. Per the
+// simple-mode design decision, that's the completion date when transplanting spanned multiple
+// days (never an averaged date — see transplantDatRange for why averaging is avoided), and the
+// single logged date otherwise.
+function transplantAnchorDate(ev){
+  if(!ev) return null;
+  return (ev.categoryId === "transplanting" && ev.endDate && ev.endDate > ev.date) ? ev.endDate : ev.date;
+}
+// For a multi-day transplanting event, the true crop age varies by how early or late a given
+// section was planted. Rather than collapsing that into one averaged age (which mistimes
+// fertilizer/irrigation/pest guidance for every section except the middle one), this exposes the
+// real earliest/latest/average DAT so a screen can show the range instead of a false single number.
+function transplantDatRange(ev){
+  const span = transplantSpanDays(ev);
+  if(!span) return null;
+  // The earliest-transplanted section (start date) is the OLDEST and so has the highest DAT;
+  // the last-transplanted section (end date) is the YOUNGEST and has the lowest DAT.
+  const oldestSectionDAT = daysSince(ev.date);
+  const youngestSectionDAT = daysSince(ev.endDate);
+  return {
+    spanDays: span,
+    minDAT: youngestSectionDAT, maxDAT: oldestSectionDAT,
+    averageDAT: Math.round((oldestSectionDAT + youngestSectionDAT) / 2)
+  };
+}
 function eventDisplayName(ev){
   const cat = categoryMeta(ev.categoryId);
+  if(ev.categoryId === "transplanting" && transplantSpanDays(ev)){
+    return "Transplanting completed over " + transplantSpanDays(ev) + " days (" + formatDateDisplay(ev.date) + "\u2013" + formatDateDisplay(ev.endDate) + ")";
+  }
   if(ev.categoryId === "spray") return "Spraying (" + (ev.sprayType || "Insecticide") + ")";
   if(ev.categoryId === "fertilizer" && ev.fertilizerType) return "Fertilizer application (" + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "") + ")";
   if(ev.categoryId === "stored_sold"){
@@ -862,7 +899,7 @@ const GUARDRAILS = [
     severity: "medium",
     check: function(ev, ctx){
       if(!ctx.transplantEvent) return false;
-      const dpt = daysBetween(ctx.transplantEvent.date, ev.date);
+      const dpt = daysBetween(transplantAnchorDate(ctx.transplantEvent), ev.date);
       if(dpt == null || dpt < 0) return false;
       if(ctx.harvestEvent){
         const daysBeforeHarvest = daysBetween(ev.date, ctx.harvestEvent.date);
@@ -1057,9 +1094,9 @@ function computeSeasonPhase(events){
   if(seasonAnchor){
     heroPhase = sowingEvent ? "germination" : "growing";
     phaseAnchorDate = seasonAnchor.date;
-    if(transplantEvent && transplantEvent.date >= phaseAnchorDate){
+    if(transplantEvent && transplantAnchorDate(transplantEvent) >= phaseAnchorDate){
       heroPhase = "growing";
-      phaseAnchorDate = transplantEvent.date;
+      phaseAnchorDate = transplantAnchorDate(transplantEvent);
     }
     if(harvestEvent && harvestEvent.date >= phaseAnchorDate){
       heroPhase = "drying";
@@ -1074,13 +1111,17 @@ function computeSeasonPhase(events){
     : heroPhase === "drying" ? harvestEvent
     : heroPhase === "complete" ? dispositionEvent
     : (heroPhase === "germination" ? sowingEvent : null);
-  const cropAge = heroAnchorEvent ? daysSince(heroAnchorEvent.date) : null;
+  const cropAge = heroAnchorEvent ? daysSince(heroPhase === "growing" ? transplantAnchorDate(heroAnchorEvent) : heroAnchorEvent.date) : null;
   const heroStageLabel = heroPhase === "growing" ? stageForTransplantDays(cropAge)
     : heroPhase === "drying" ? DRYING_LABEL
     : heroPhase === "complete" ? COMPLETE_LABEL
     : GERMINATION_LABEL;
+  // Only meaningful in the growing phase, and only non-null when transplanting actually spanned
+  // multiple days — lets a screen show "12-18 DAT" instead of a single (potentially misleading) age.
+  const transplantDatRangeInfo = heroPhase === "growing" ? transplantDatRange(transplantEvent) : null;
   return { sowingEvent: sowingEvent, transplantEvent: transplantEvent, harvestEvent: harvestEvent, dispositionEvent: dispositionEvent,
-    heroPhase: heroPhase, cropAge: cropAge, heroStageLabel: heroStageLabel, heroAnchorEvent: heroAnchorEvent };
+    heroPhase: heroPhase, cropAge: cropAge, heroStageLabel: heroStageLabel, heroAnchorEvent: heroAnchorEvent,
+    transplantDatRange: transplantDatRangeInfo };
 }
 
 function HomeScreen(state){
@@ -1089,7 +1130,8 @@ function HomeScreen(state){
   const seasonPhase = useMemo(function(){ return computeSeasonPhase(state.events); }, [state.events]);
   const sowingEvent = seasonPhase.sowingEvent, transplantEvent = seasonPhase.transplantEvent,
     harvestEvent = seasonPhase.harvestEvent, dispositionEvent = seasonPhase.dispositionEvent,
-    heroPhase = seasonPhase.heroPhase, cropAge = seasonPhase.cropAge, heroStageLabel = seasonPhase.heroStageLabel;
+    heroPhase = seasonPhase.heroPhase, cropAge = seasonPhase.cropAge, heroStageLabel = seasonPhase.heroStageLabel,
+    transplantDatRange = seasonPhase.transplantDatRange;
 
   // Routine actions (fertilizer, mulch, etc.) are scoped to the CURRENT phase only. Without
   // this, a nursery-time fertilizer or a mulch that was removed once early on would keep
@@ -1163,7 +1205,9 @@ function HomeScreen(state){
             : e(React.Fragment, null,
                 e("div", { className:"hero-num mono" }, cropAge),
                 e("div", { className:"hero-label" }, (cropAge === 1 ? "day since " : "days since ") + (heroPhase === "growing" ? "transplanting" : heroPhase === "drying" ? "harvest" : "sowing")),
-                e("div", { className:"hero-sub" }, heroStageLabel)
+                e("div", { className:"hero-sub" }, heroStageLabel),
+                transplantDatRange && e("div", { className:"hero-sub", style:{ opacity:0.75, marginTop:"2px" } },
+                  "Crop age varies by section: " + transplantDatRange.minDAT + "\u2013" + transplantDatRange.maxDAT + " DAT (transplanted over " + transplantDatRange.spanDays + " days)")
               )
         )
       ),
@@ -1855,6 +1899,8 @@ function App(){
   const [editingId, setEditingId] = useState(null);
   const [formCategory, setFormCategory] = useState(CATEGORIES[0].id);
   const [formDate, setFormDate] = useState(todayISO());
+  const [formMultiDay, setFormMultiDay] = useState(false);
+  const [formEndDate, setFormEndDate] = useState(todayISO());
   const [formSprayType, setFormSprayType] = useState(SPRAY_TYPES[0]);
   const [formFertilizerType, setFormFertilizerType] = useState(FERTILIZER_TYPES[0]);
   const [formQuantityKg, setFormQuantityKg] = useState("");
@@ -1867,6 +1913,7 @@ function App(){
 
   function openAddModal(presetCategory){
     setEditingId(null); setFormCategory(presetCategory || CATEGORIES[0].id); setFormDate(todayISO());
+    setFormMultiDay(false); setFormEndDate(todayISO());
     setFormSprayType(SPRAY_TYPES[0]); setFormFertilizerType(FERTILIZER_TYPES[0]); setFormQuantityKg("");
     setFormObservation(""); setFormLabel("");
     setFormOutcome(DISPOSITION_OPTIONS[0]); setFormQuantityGunia(""); setFormPriceTsh("");
@@ -1874,6 +1921,7 @@ function App(){
   }
   function openEditModal(ev){
     setEditingId(ev.id); setFormCategory(ev.categoryId); setFormDate(ev.date);
+    setFormMultiDay(!!ev.endDate); setFormEndDate(ev.endDate || ev.date);
     setFormSprayType(ev.sprayType || SPRAY_TYPES[0]);
     setFormFertilizerType(ev.fertilizerType || FERTILIZER_TYPES[0]); setFormQuantityKg(ev.quantityKg != null ? String(ev.quantityKg) : "");
     setFormObservation(ev.observation || ""); setFormLabel(ev.label || "");
@@ -1887,8 +1935,11 @@ function App(){
     const base = {
       categoryId: formCategory, date: formDate,
       sprayType: undefined, observation: undefined, fertilizerType: undefined, quantityKg: undefined,
-      outcome: undefined, quantityGunia: undefined, priceTsh: undefined, label: undefined
+      outcome: undefined, quantityGunia: undefined, priceTsh: undefined, label: undefined, endDate: undefined
     };
+    if(formCategory === "transplanting" && formMultiDay && formEndDate && formEndDate > formDate){
+      base.endDate = formEndDate;
+    }
     if(formCategory === "spray"){ base.sprayType = formSprayType; base.observation = formObservation.trim() || undefined; }
     else if(formCategory === "fertilizer"){
       base.fertilizerType = formFertilizerType.trim() || undefined;
@@ -2002,8 +2053,21 @@ function App(){
         formCategory === "stored_sold" && formOutcome === "Sold" && e("div", { className:"field" }, e("label", null, "Price, Tsh (optional)"),
           e("input", { type:"number", min:"0", inputMode:"decimal", value: formPriceTsh, placeholder: "e.g. 450000", onChange: function(ev){ setFormPriceTsh(ev.target.value); } })
         ),
-        e("div", { className:"field" }, e("label", null, "Date"),
+        formCategory === "transplanting" && e("div", { className:"field" },
+          e("label", { style:{ display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" } },
+            e("input", { type:"checkbox", checked: formMultiDay, onChange: function(ev){
+              const checked = ev.target.checked;
+              setFormMultiDay(checked);
+              if(checked && formEndDate < formDate) setFormEndDate(formDate);
+            } }),
+            "Did transplanting span multiple days?"
+          ),
+          e("div", { className:"hint" }, "If yes, each day's age is tracked using the finish date, not an average, so timing advice stays accurate for the whole field.")
+        ),
+        e("div", { className:"field" }, e("label", null, formCategory === "transplanting" && formMultiDay ? "Start date" : "Date"),
           e("input", { type:"date", value: formDate, onChange: function(ev){ setFormDate(ev.target.value); } })),
+        formCategory === "transplanting" && formMultiDay && e("div", { className:"field" }, e("label", null, "Finish date"),
+          e("input", { type:"date", min: formDate, value: formEndDate, onChange: function(ev){ setFormEndDate(ev.target.value); } })),
 
         isRichCategory
           ? e("div", { className:"field" }, e("label", null, "Observation"),
