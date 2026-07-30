@@ -238,6 +238,18 @@
   .tag-pill.mile{background:var(--bg-elevated); color:var(--text-muted); border:1px solid var(--border-subtle);}
 
   .add-btn{width:100%; background:var(--accent-dim); color:var(--accent); border:1px dashed var(--accent); border-radius:10px; padding:12px; font-size:14px; font-weight:700; margin-top:14px;}
+  .shape-select{display:flex; gap:8px; margin-bottom:16px;}
+  .shape-btn{flex:1; padding:10px 6px; border-radius:10px; border:1px solid var(--border-subtle); background:var(--bg-elevated); color:var(--text-secondary); font-size:12px; font-weight:700; text-align:center;}
+  .shape-btn.active{border-color:var(--accent); color:var(--accent); background:var(--accent-dim);}
+  .bed-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-subtle);}
+  .bed-row:last-child{border-bottom:none;}
+  .bed-row .bed-remove{color:var(--status-danger); font-size:13px; font-weight:700; padding:4px 8px; background:none; border:none;}
+  .calc-total{display:flex; justify-content:space-between; align-items:center; padding:12px 14px; background:var(--bg-elevated); border-radius:10px; margin:12px 0; font-size:14px; font-weight:700;}
+  .calc-result{background:var(--accent-dim); border:1px solid var(--accent); border-radius:12px; padding:14px; margin-top:16px;}
+  .calc-result-row{display:flex; justify-content:space-between; font-size:14px; padding:4px 0; color:var(--text-secondary);}
+  .calc-result-row.total{font-weight:800; font-size:16px; color:var(--text-primary); border-top:1px solid var(--border-subtle); margin-top:6px; padding-top:10px;}
+  .field-row{display:flex; gap:10px;}
+  .field-row .field{flex:1;}
 
   .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:50; display:flex; align-items:flex-end; justify-content:center;}
   .modal{background:var(--bg-surface); width:100%; max-width:480px; border-radius:20px 20px 0 0; padding:20px 20px calc(20px + env(safe-area-inset-bottom)); max-height:85vh; overflow-y:auto; border:1px solid var(--border-subtle); border-bottom:none;}
@@ -340,7 +352,8 @@ function seedData(){
       { id: "e5", categoryId: "weeding",    date: "2026-07-14" },
       { id: "e6", categoryId: "fertilizer", date: "2026-07-16" }
     ],
-    observations: []
+    observations: [],
+    areaBeds: []
   };
 }
 
@@ -351,10 +364,21 @@ function loadState(){
     const parsed = JSON.parse(raw);
     if(!parsed || !parsed.farm || !parsed.events) return seedData();
     if(!parsed.observations) parsed.observations = []; // migrate saves from before Observations existed
+    if(!parsed.areaBeds) parsed.areaBeds = []; // migrate saves from before the Area Calculator existed
     return parsed;
   }catch(err){ return seedData(); }
 }
 function saveState(state){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(err){} }
+
+// Threat Map cards on Home auto-hide after 24h or as soon as a new event/observation is logged,
+// whichever comes first — the underlying detail always stays visible on the Why page regardless.
+// Keyed by threat id + the observation date that triggered it, so a genuinely new occurrence
+// (a fresh observation re-triggering the same threat type) shows again with its own timer.
+const THREAT_SEEN_KEY = "japhe_farm_threat_seen_v1";
+function loadThreatSeenLog(){
+  try{ const raw = localStorage.getItem(THREAT_SEEN_KEY); return raw ? JSON.parse(raw) : {}; }catch(err){ return {}; }
+}
+function saveThreatSeenLog(log){ try{ localStorage.setItem(THREAT_SEEN_KEY, JSON.stringify(log)); }catch(err){} }
 
 function todayISO(){
   const d = new Date();
@@ -389,6 +413,44 @@ function formatDateDisplay(dateStr){
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" });
 }
+// Area Calculator — shape math. Acute triangle takes all 3 side lengths (easiest to measure in
+// the field with a tape/rope) and uses Heron's formula rather than requiring an angle.
+const BED_SHAPES = [
+  { id:"rectangle", label:"Rectangle" },
+  { id:"right_triangle", label:"Right triangle" },
+  { id:"acute_triangle", label:"Acute triangle" }
+];
+function computeShapeArea(shape, dims){
+  if(shape === "rectangle"){
+    const l = Number(dims.length), w = Number(dims.width);
+    if(!(l > 0) || !(w > 0)) return null;
+    return l * w;
+  }
+  if(shape === "right_triangle"){
+    const b = Number(dims.base), h = Number(dims.height);
+    if(!(b > 0) || !(h > 0)) return null;
+    return 0.5 * b * h;
+  }
+  if(shape === "acute_triangle"){
+    const a = Number(dims.sideA), b = Number(dims.sideB), c = Number(dims.sideC);
+    if(!(a > 0) || !(b > 0) || !(c > 0)) return null;
+    // Triangle inequality check — three sides that can't form a real triangle.
+    if(a + b <= c || a + c <= b || b + c <= a) return null;
+    const s = (a + b + c) / 2;
+    const inner = s * (s - a) * (s - b) * (s - c);
+    if(inner <= 0) return null;
+    return Math.sqrt(inner);
+  }
+  return null;
+}
+function shapeLabel(shape){ const m = BED_SHAPES.find(function(s){ return s.id === shape; }); return m ? m.label : shape; }
+function bedDimsSummary(shape, dims){
+  if(shape === "rectangle") return dims.length + "m × " + dims.width + "m";
+  if(shape === "right_triangle") return "base " + dims.base + "m, height " + dims.height + "m";
+  if(shape === "acute_triangle") return "sides " + dims.sideA + "/" + dims.sideB + "/" + dims.sideC + "m";
+  return "";
+}
+
 function urgencyClass(days){ if(days >= 30) return "danger"; if(days >= 14) return "warn"; return "ok"; }
 function urgencyColorVar(days){ if(days >= 30) return "var(--status-danger)"; if(days >= 14) return "var(--status-warning)"; return "var(--status-success)"; }
 function ordinalLabel(n){ if(n===1) return "1st"; if(n===2) return "2nd"; if(n===3) return "3rd"; return n+"th"; }
@@ -1176,6 +1238,29 @@ function HomeScreen(state){
     return evaluateFertilizerSafety(state.events, sowingEvent ? sowingEvent.date : null, sowingEvent).filter(function(f){ return f.severity === "critical" || f.severity === "high"; });
   }, [state.events, sowingEvent]);
 
+  // Threat Map cards auto-hide from Home after 24h or a new event/observation, whichever first.
+  const totalEntries = state.events.length + (state.observations ? state.observations.length : 0);
+  const [threatSeenLog, setThreatSeenLog] = useState(loadThreatSeenLog);
+  useEffect(function(){
+    const log = Object.assign({}, threatSeenLog);
+    let changed = false;
+    threats.forEach(function(t){
+      const key = t.id + "|" + t.observationDate;
+      if(!log[key]){ log[key] = { firstSeenAt: Date.now(), entriesAtFirstSeen: totalEntries }; changed = true; }
+    });
+    if(changed){ setThreatSeenLog(log); saveThreatSeenLog(log); }
+  }, [threats, totalEntries]);
+  const visibleThreats = useMemo(function(){
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    return threats.filter(function(t){
+      const seen = threatSeenLog[t.id + "|" + t.observationDate];
+      if(!seen) return true;
+      const expired = (Date.now() - seen.firstSeenAt) > DAY_MS;
+      const hasNewEntry = totalEntries > seen.entriesAtFirstSeen;
+      return !expired && !hasNewEntry;
+    });
+  }, [threats, threatSeenLog, totalEntries]);
+
   return e("div", { className:"home-wrap" },
     e("div", { className:"header" },
       e("div", { className:"farmrow" },
@@ -1218,7 +1303,7 @@ function HomeScreen(state){
       engineCheck && (engineCheck.overall === "full" || engineCheck.overall === "partial") &&
         e("div", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("engine"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, engineCheck.overall === "full" ? "✓ " + engineCheck.label : engineCheck.label),
+            e("div", { className:"advisory-title" }, engineCheck.label),
             e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? "Your latest observation matches the guideline. Tap to see why." : "Getting close. Tap to see what's matched so far.")
           ),
           e("span", { className:"chev" }, "›")
@@ -1255,7 +1340,9 @@ function HomeScreen(state){
         ),
 
       // Threat Map — pest/disease diagnosis from the latest logged symptom observation.
-      threats.map(function(t){
+      // Filtered to visibleThreats: cards auto-hide after 24h or a new event/observation;
+      // full detail always stays available on the Why page regardless.
+      visibleThreats.map(function(t){
         return e("div", { key: t.id, className:"advisory-card threat-" + t.severity, onClick: function(){ state.onGoToWhy("threat-" + t.id); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("threat-" + t.id); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, t.label),
@@ -1276,6 +1363,12 @@ function HomeScreen(state){
           e("span", { className:"chev" }, "›")
         );
       }),
+
+      // Farm area — only shown once beds have been added via Settings > Calculator > Area calculator.
+      (state.areaBeds && state.areaBeds.length > 0) && e("div", { className:"calc-total", style:{ margin:"0 20px 18px" } },
+        e("span", null, "Farm area"),
+        e("span", null, state.areaBeds.length + " bed" + (state.areaBeds.length===1?"":"s") + " · " + state.areaBeds.reduce(function(sum,b){ return sum+b.area; },0).toFixed(1) + " m²")
+      ),
 
       // What must I do now? — up to three tracked activities, most important first.
       e("div", { className:"section-label tight" }, "Next action"),
@@ -1739,6 +1832,197 @@ function OptionalSelect(props){
   );
 }
 
+function AreaCalculatorModal(props){
+  const beds = props.beds || [];
+  const [shape, setShape] = useState("rectangle");
+  const [length, setLength] = useState(""); const [width, setWidth] = useState("");
+  const [base, setBase] = useState(""); const [height, setHeight] = useState("");
+  const [sideA, setSideA] = useState(""); const [sideB, setSideB] = useState(""); const [sideC, setSideC] = useState("");
+  const [error, setError] = useState("");
+
+  function currentDims(){
+    if(shape === "rectangle") return { length: length, width: width };
+    if(shape === "right_triangle") return { base: base, height: height };
+    return { sideA: sideA, sideB: sideB, sideC: sideC };
+  }
+  const previewArea = computeShapeArea(shape, currentDims());
+
+  function resetFields(){ setLength(""); setWidth(""); setBase(""); setHeight(""); setSideA(""); setSideB(""); setSideC(""); setError(""); }
+
+  function handleAdd(){
+    const dims = currentDims();
+    const area = computeShapeArea(shape, dims);
+    if(area === null){
+      setError(shape === "acute_triangle" ? "Those three side lengths can't form a triangle — check the measurements." : "Enter valid measurements above 0.");
+      return;
+    }
+    props.onAdd({ id: "bed" + Date.now(), shape: shape, dims: dims, area: area });
+    resetFields();
+  }
+
+  const totalArea = beds.reduce(function(sum, b){ return sum + b.area; }, 0);
+
+  return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, "Area calculator"),
+      e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Add each bed's shape and size. Press Add after each one — one bed or a hundred, the total builds up below."),
+
+      e("div", { className:"shape-select" }, BED_SHAPES.map(function(s){
+        return e("button", { key: s.id, className:"shape-btn" + (shape===s.id ? " active" : ""), onClick: function(){ setShape(s.id); setError(""); } }, s.label);
+      })),
+
+      shape === "rectangle" && e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, "Length (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: length, onChange: function(ev){ setLength(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "Width (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: width, onChange: function(ev){ setWidth(ev.target.value); } }))
+      ),
+      shape === "right_triangle" && e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, "Base (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: base, onChange: function(ev){ setBase(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "Height (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: height, onChange: function(ev){ setHeight(ev.target.value); } }))
+      ),
+      shape === "acute_triangle" && e(React.Fragment, null,
+        e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Measure all three sides of the bed."),
+        e("div", { className:"field-row" },
+          e("div", { className:"field" }, e("label", null, "Side A (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideA, onChange: function(ev){ setSideA(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, "Side B (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideB, onChange: function(ev){ setSideB(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, "Side C (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideC, onChange: function(ev){ setSideC(ev.target.value); } }))
+        )
+      ),
+
+      previewArea !== null && e("div", { className:"hint", style:{ marginBottom:"8px" } }, "This bed: " + previewArea.toFixed(1) + " m²"),
+      error && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"8px" } }, error),
+
+      e("button", { className:"add-btn", onClick: handleAdd }, "+ Add this bed"),
+
+      beds.length > 0 && e("div", { className:"calc-total" }, e("span", null, beds.length + " bed" + (beds.length===1?"":"s")), e("span", null, totalArea.toFixed(1) + " m²")),
+
+      beds.length > 0 && e("div", { style:{ marginTop:"6px" } }, beds.map(function(b, i){
+        return e("div", { className:"bed-row", key: b.id },
+          e("div", null,
+            e("div", { style:{ fontSize:"13px", fontWeight:700 } }, "Bed " + (i+1) + " — " + shapeLabel(b.shape)),
+            e("div", { className:"hint" }, bedDimsSummary(b.shape, b.dims) + " · " + b.area.toFixed(1) + " m²")
+          ),
+          e("button", { className:"bed-remove", onClick: function(){ props.onRemove(b.id); } }, "Remove")
+        );
+      })),
+
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-primary", onClick: props.onClose }, "Done")
+      )
+    )
+  );
+}
+
+const SPRAY_CALC_CATEGORIES = ["Foliar / liquid fertilizer", "Herbicide", "Insecticide", "Other"];
+function SprayCalculatorModal(props){
+  const [category, setCategory] = useState(SPRAY_CALC_CATEGORIES[0]);
+  const [overrideBeds, setOverrideBeds] = useState("");
+  const [rateMl, setRateMl] = useState("");
+  const [ratePerLiters, setRatePerLiters] = useState("");
+  const [tankSizeL, setTankSizeL] = useState("");
+  const [bedsPerTank, setBedsPerTank] = useState("");
+  const [bottleSizeMl, setBottleSizeMl] = useState("");
+  const [bufferPct, setBufferPct] = useState("10");
+
+  const totalBeds = overrideBeds.trim() ? Number(overrideBeds) : props.bedsCount;
+  const bedsPerTankNum = Number(bedsPerTank);
+  const tanksNeeded = (totalBeds > 0 && bedsPerTankNum > 0) ? Math.ceil(totalBeds / bedsPerTankNum) : null;
+  const rateMlNum = Number(rateMl), ratePerLitersNum = Number(ratePerLiters), tankSizeNum = Number(tankSizeL), bottleSizeNum = Number(bottleSizeMl);
+  const bufferNum = bufferPct.trim() ? Number(bufferPct) : 0;
+  const mlPerTank = (rateMlNum > 0 && ratePerLitersNum > 0 && tankSizeNum > 0) ? (rateMlNum / ratePerLitersNum) * tankSizeNum : null;
+  const totalProductMl = (tanksNeeded != null && mlPerTank != null) ? tanksNeeded * mlPerTank : null;
+  const totalWithBuffer = totalProductMl != null ? totalProductMl * (1 + bufferNum / 100) : null;
+  const bottlesNeeded = (totalWithBuffer != null && bottleSizeNum > 0) ? Math.ceil(totalWithBuffer / bottleSizeNum) : null;
+
+  return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, "Foliar / herbicide / insecticide"),
+      e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Works out tanks, total product, and bottles to buy — using your saved area."),
+
+      e("div", { className:"field" }, e("label", null, "Product category"),
+        e("select", { value: category, onChange: function(ev){ setCategory(ev.target.value); } },
+          SPRAY_CALC_CATEGORIES.map(function(c){ return e("option", { value:c, key:c }, c); }))),
+
+      e("div", { className:"hint", style:{ marginBottom:"10px" } },
+        props.bedsCount > 0
+          ? "Using saved area: " + props.bedsCount + " beds · " + props.totalArea.toFixed(1) + " m²"
+          : "No beds saved yet in the Area calculator — enter a total below."),
+      e("div", { className:"field" }, e("label", null, "Override total beds (optional)"),
+        e("input", { type:"number", min:"0", inputMode:"numeric", value: overrideBeds, placeholder: String(props.bedsCount || ""), onChange: function(ev){ setOverrideBeds(ev.target.value); } })),
+
+      e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, "Product rate (ml)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: rateMl, onChange: function(ev){ setRateMl(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "per how many L water"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: ratePerLiters, onChange: function(ev){ setRatePerLiters(ev.target.value); } }))
+      ),
+      e("div", { className:"hint", style:{ marginTop:"-10px", marginBottom:"14px" } }, "From the product label — e.g. 20ml per 20L of water."),
+
+      e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, "Tank size (L)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: tankSizeL, onChange: function(ev){ setTankSizeL(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "Beds per full tank"), e("input", { type:"number", min:"0", inputMode:"decimal", value: bedsPerTank, onChange: function(ev){ setBedsPerTank(ev.target.value); } }))
+      ),
+
+      e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, "Bottle size (ml)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 1000", value: bottleSizeMl, onChange: function(ev){ setBottleSizeMl(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "Waste buffer (%)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: bufferPct, onChange: function(ev){ setBufferPct(ev.target.value); } }))
+      ),
+
+      e("div", { className:"calc-result" },
+        e("div", { className:"calc-result-row" }, e("span", null, "Tank refills needed"), e("span", null, tanksNeeded != null ? tanksNeeded : "—")),
+        e("div", { className:"calc-result-row" }, e("span", null, "Total product (with buffer)"), e("span", null, totalWithBuffer != null ? Math.round(totalWithBuffer) + " ml" : "—")),
+        e("div", { className:"calc-result-row total" }, e("span", null, "Bottles to buy"), e("span", null, bottlesNeeded != null ? bottlesNeeded : "—"))
+      ),
+
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-primary", onClick: props.onClose }, "Done")
+      )
+    )
+  );
+}
+
+function FertilizerCalculatorModal(props){
+  const [overrideArea, setOverrideArea] = useState("");
+  const [rateKg, setRateKg] = useState("");
+  const [ratePerM2, setRatePerM2] = useState("");
+  const [bufferPct, setBufferPct] = useState("10");
+
+  const totalArea = overrideArea.trim() ? Number(overrideArea) : props.totalArea;
+  const rateKgNum = Number(rateKg), ratePerM2Num = Number(ratePerM2);
+  const bufferNum = bufferPct.trim() ? Number(bufferPct) : 0;
+  const totalKg = (rateKgNum > 0 && ratePerM2Num > 0 && totalArea > 0) ? (rateKgNum / ratePerM2Num) * totalArea : null;
+  const totalKgWithBuffer = totalKg != null ? totalKg * (1 + bufferNum / 100) : null;
+
+  return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, "Granular fertilizer"),
+      e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Works out total kg to buy for your area, buffer included — you decide the bag split at the shop."),
+
+      e("div", { className:"hint", style:{ marginBottom:"10px" } },
+        props.bedsCount > 0
+          ? "Using saved area: " + props.bedsCount + " beds · " + props.totalArea.toFixed(1) + " m²"
+          : "No beds saved yet in the Area calculator — enter a total below."),
+      e("div", { className:"field" }, e("label", null, "Override total area, m² (optional)"),
+        e("input", { type:"number", min:"0", inputMode:"decimal", placeholder: props.totalArea ? props.totalArea.toFixed(1) : "", value: overrideArea, onChange: function(ev){ setOverrideArea(ev.target.value); } })),
+
+      e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, "Fertilizer rate (kg)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 2", value: rateKg, onChange: function(ev){ setRateKg(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "per how many m²"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 10", value: ratePerM2, onChange: function(ev){ setRatePerM2(ev.target.value); } }))
+      ),
+      e("div", { className:"hint", style:{ marginTop:"-10px", marginBottom:"14px" } }, "E.g. 2kg per 10m² — whatever your usual rate is."),
+
+      e("div", { className:"field" }, e("label", null, "Waste buffer (%)"),
+        e("input", { type:"number", min:"0", inputMode:"decimal", value: bufferPct, onChange: function(ev){ setBufferPct(ev.target.value); } })),
+
+      e("div", { className:"calc-result" },
+        e("div", { className:"calc-result-row" }, e("span", null, "Base need"), e("span", null, totalKg != null ? totalKg.toFixed(1) + " kg" : "—")),
+        e("div", { className:"calc-result-row total" }, e("span", null, "Buy this much (with buffer)"), e("span", null, totalKgWithBuffer != null ? totalKgWithBuffer.toFixed(1) + " kg" : "—"))
+      ),
+
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-primary", onClick: props.onClose }, "Done")
+      )
+    )
+  );
+}
+
 function SettingsScreen(props){
   const state = props.state;
   const onUpdateFarm = props.onUpdateFarm, onOpenAddEvent = props.onOpenAddEvent, onOpenAddObservation = props.onOpenAddObservation;
@@ -1755,6 +2039,13 @@ function SettingsScreen(props){
   const [restoreError, setRestoreError] = useState("");
   const [restoreConfirming, setRestoreConfirming] = useState(false);
 
+  const [calcMenuOpen, setCalcMenuOpen] = useState(false);
+  const [areaCalcOpen, setAreaCalcOpen] = useState(false);
+  const [sprayCalcOpen, setSprayCalcOpen] = useState(false);
+  const [fertCalcOpen, setFertCalcOpen] = useState(false);
+  const areaBeds = state.areaBeds || [];
+  const totalBedArea = areaBeds.reduce(function(sum, b){ return sum + b.area; }, 0);
+
   function buildBackupText(){
     return JSON.stringify({
       _backup: true,
@@ -1762,7 +2053,8 @@ function SettingsScreen(props){
       engineBaselineVersion: "2.0-fully-verified",
       farm: state.farm,
       events: state.events,
-      observations: state.observations || []
+      observations: state.observations || [],
+      areaBeds: state.areaBeds || []
     }, null, 2);
   }
 
@@ -1800,7 +2092,8 @@ function SettingsScreen(props){
     onRestoreState({
       farm: parsed.farm,
       events: parsed.events,
-      observations: Array.isArray(parsed.observations) ? parsed.observations : []
+      observations: Array.isArray(parsed.observations) ? parsed.observations : [],
+      areaBeds: Array.isArray(parsed.areaBeds) ? parsed.areaBeds : []
     });
     setRestoreOpen(false);
   }
@@ -1824,6 +2117,13 @@ function SettingsScreen(props){
     e("div", { className:"section-label" }, "Field observations"),
     e("div", { className:"settings-block" },
       e("button", { className:"add-btn", onClick: onOpenAddObservation }, "+ Add observation")
+    ),
+
+    e("div", { className:"section-label" }, "Calculator"),
+    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
+      e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(true); } },
+        e("span", null, "Calculator" + (areaBeds.length > 0 ? " · " + areaBeds.length + " beds · " + Math.round(totalBedArea) + " m²" : "")),
+        e("span", { className:"chev" }, "›"))
     ),
 
     e("div", { className:"section-label" }, "Data & backup"),
@@ -1868,7 +2168,44 @@ function SettingsScreen(props){
               )
             )
       )
-    )
+    ),
+
+    calcMenuOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setCalcMenuOpen(false); } },
+      e("div", { className:"modal" },
+        e("h2", null, "Calculator"),
+        e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Work out usable beds, then how much product to buy."),
+        e("div", { className:"settings-block", style:{ padding:"4px 16px", margin:0 } },
+          e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setAreaCalcOpen(true); } },
+            e("span", null, "Area calculator" + (areaBeds.length > 0 ? " · " + areaBeds.length + " beds" : "")), e("span", { className:"chev" }, "›")),
+          e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setSprayCalcOpen(true); } },
+            e("span", null, "Foliar / herbicide / insecticide"), e("span", { className:"chev" }, "›")),
+          e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setFertCalcOpen(true); } },
+            e("span", null, "Granular fertilizer"), e("span", { className:"chev" }, "›"))
+        ),
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setCalcMenuOpen(false); } }, "Close")
+        )
+      )
+    ),
+
+    areaCalcOpen && e(AreaCalculatorModal, {
+      beds: areaBeds,
+      onAdd: props.onAddAreaBed,
+      onRemove: props.onRemoveAreaBed,
+      onClose: function(){ setAreaCalcOpen(false); }
+    }),
+
+    sprayCalcOpen && e(SprayCalculatorModal, {
+      bedsCount: areaBeds.length,
+      totalArea: totalBedArea,
+      onClose: function(){ setSprayCalcOpen(false); }
+    }),
+
+    fertCalcOpen && e(FertilizerCalculatorModal, {
+      bedsCount: areaBeds.length,
+      totalArea: totalBedArea,
+      onClose: function(){ setFertCalcOpen(false); }
+    })
   );
 }
 
@@ -1887,12 +2224,14 @@ function App(){
   function deleteEvent(id){ setState(function(prev){ return Object.assign({}, prev, { events: prev.events.filter(function(ev){ return ev.id !== id; }) }); }); }
 
   function addObservation(o){ setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).concat([o]) }); }); }
+  function addAreaBed(bed){ setState(function(prev){ return Object.assign({}, prev, { areaBeds: (prev.areaBeds||[]).concat([bed]) }); }); }
+  function removeAreaBed(id){ setState(function(prev){ return Object.assign({}, prev, { areaBeds: (prev.areaBeds||[]).filter(function(b){ return b.id !== id; }) }); }); }
   function updateObservation(id, patch){
     setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).map(function(o){ return o.id===id ? Object.assign({}, o, patch) : o; }) }); });
   }
   function deleteObservation(id){ setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).filter(function(o){ return o.id !== id; }) }); }); }
 
-  function restoreState(newState){ setState({ farm: newState.farm, events: newState.events, observations: newState.observations || [] }); }
+  function restoreState(newState){ setState({ farm: newState.farm, events: newState.events, observations: newState.observations || [], areaBeds: newState.areaBeds || [] }); }
 
   // Event add/edit modal — shared by Settings ("+ Add new event") and History (double-tap an activity).
   const [modalOpen, setModalOpen] = useState(false);
@@ -2019,7 +2358,8 @@ function App(){
         }))
       : tab === "why" ? e(WhyScreen, { state: state, focus: whyFocus })
       : e(SettingsScreen, { state: state, onUpdateFarm: updateFarm, onOpenAddEvent: function(){ openAddModal(); },
-          onOpenAddObservation: openAddObsModal, onRestoreState: restoreState }),
+          onOpenAddObservation: openAddObsModal, onRestoreState: restoreState,
+          onAddAreaBed: addAreaBed, onRemoveAreaBed: removeAreaBed }),
 
     modalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setModalOpen(false); } },
       e("div", { className:"modal" },
