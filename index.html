@@ -239,8 +239,11 @@
 
   .add-btn{width:100%; background:var(--accent-dim); color:var(--accent); border:1px dashed var(--accent); border-radius:10px; padding:12px; font-size:14px; font-weight:700; margin-top:14px;}
   .shape-select{display:flex; gap:8px; margin-bottom:16px;}
-  .shape-btn{flex:1; padding:10px 6px; border-radius:10px; border:1px solid var(--border-subtle); background:var(--bg-elevated); color:var(--text-secondary); font-size:12px; font-weight:700; text-align:center;}
+  .shape-btn{flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 6px; border-radius:10px; border:1px solid var(--border-subtle); background:var(--bg-elevated); color:var(--text-secondary);}
   .shape-btn.active{border-color:var(--accent); color:var(--accent); background:var(--accent-dim);}
+  .shape-btn-label{font-size:11px; font-weight:700; text-align:center;}
+  .suggest-btn{width:100%; background:var(--bg-elevated); color:var(--accent); border:1px solid var(--accent); border-radius:10px; padding:11px; font-size:13px; font-weight:700; margin-bottom:14px; text-align:left;}
+  .suggest-btn .suggest-sub{display:block; font-weight:500; color:var(--text-secondary); font-size:11px; margin-top:2px;}
   .bed-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-subtle);}
   .bed-row:last-child{border-bottom:none;}
   .bed-row .bed-remove{color:var(--status-danger); font-size:13px; font-weight:700; padding:4px 8px; background:none; border:none;}
@@ -308,6 +311,35 @@ const SPRAY_TYPES = ["Insecticide", "Fungicide", "Herbicide", "Other"];
 // never reliably detect a risky product without guessing at spelling/wording. These are the
 // specific products the fertilizer-safety chemistry rules below actually distinguish between.
 const FERTILIZER_TYPES = ["DAP", "Urea", "CAN", "Calcium Nitrate", "NPK compound", "Compost / manure", "Other"];
+
+// Typical nutrient content by product — standard commercial grades, cross-checked against
+// multiple independent sources (Mosaic Crop Nutrition, WVU Extension, industry product
+// listings). Actual bags vary by manufacturer, so these are a starting point, not a
+// substitute for reading the bag. "NPK compound" and "Compost / manure" are left out
+// deliberately — their ratios vary too widely by product to give a single honest default.
+const FERTILIZER_COMPOSITION = {
+  "DAP": { n: 18, p: 46, k: 0 },
+  "Urea": { n: 46, p: 0, k: 0 },
+  "CAN": { n: 26, p: 0, k: 0, ca: 8 },
+  "Calcium Nitrate": { n: 15.5, p: 0, k: 0, ca: 19 }
+};
+
+// Suggested application-rate presets, keyed by fertilizer type — only shown for the type
+// they were actually measured for. Sources: KALRO onion production guide, JICA/SHEP PLUS
+// "Bulb Onion Production" (2019). rateKg/ratePerM2 pairs are chosen for clean numbers,
+// not necessarily whole grams.
+const SUGGESTED_FERT_RATES = {
+  "DAP": [
+    { label: "Nursery bed prep", sub: "20g per m² · KALRO / JICA onion guide", rateKg: "0.02", ratePerM2: "1" }
+  ],
+  "CAN": [
+    { label: "Top-dress 1 — 30 days after transplanting", sub: "≈9.9g per m² (40kg/acre) · JICA/SHEP PLUS onion guide", rateKg: "0.99", ratePerM2: "100" },
+    { label: "Top-dress 2 — 45 days after transplanting", sub: "≈19.8g per m² (80kg/acre) · JICA/SHEP PLUS onion guide", rateKg: "1.98", ratePerM2: "100" }
+  ],
+  "Compost / manure": [
+    { label: "Basal application", sub: "10–16 tons/acre range, ≈3.2kg per m² shown (13t/acre midpoint) · JICA/SHEP PLUS onion guide", rateKg: "3.2", ratePerM2: "1" }
+  ]
+};
 
 // Observation form options — all optional at entry. Objective (measurable) fields are kept
 // separate from subjective (perception) fields so it's clear which is which later on.
@@ -417,14 +449,28 @@ function formatDateDisplay(dateStr){
 // the field with a tape/rope) and uses Heron's formula rather than requiring an angle.
 const BED_SHAPES = [
   { id:"rectangle", label:"Rectangle" },
+  { id:"trapezoid", label:"Trapezoid" },
   { id:"right_triangle", label:"Right triangle" },
   { id:"acute_triangle", label:"Acute triangle" }
 ];
+function shapeIconSvg(shapeId){
+  const common = { viewBox:"0 0 24 24", width:"28", height:"28", fill:"none", stroke:"currentColor", strokeWidth:"2", strokeLinejoin:"round", strokeLinecap:"round" };
+  if(shapeId === "rectangle") return e("svg", common, e("rect", { x:"3", y:"6", width:"18", height:"12" }));
+  if(shapeId === "trapezoid") return e("svg", common, e("path", { d:"M5,6 L19,6 L21,18 L3,18 Z" }));
+  if(shapeId === "right_triangle") return e("svg", common, e("path", { d:"M4,20 L4,4 L20,20 Z" }));
+  if(shapeId === "acute_triangle") return e("svg", common, e("path", { d:"M12,3 L21,19 L3,17 Z" }));
+  return null;
+}
 function computeShapeArea(shape, dims){
   if(shape === "rectangle"){
     const l = Number(dims.length), w = Number(dims.width);
     if(!(l > 0) || !(w > 0)) return null;
     return l * w;
+  }
+  if(shape === "trapezoid"){
+    const l = Number(dims.length), w1 = Number(dims.width1), w2 = Number(dims.width2);
+    if(!(l > 0) || !(w1 > 0) || !(w2 > 0)) return null;
+    return ((w1 + w2) / 2) * l;
   }
   if(shape === "right_triangle"){
     const b = Number(dims.base), h = Number(dims.height);
@@ -444,8 +490,10 @@ function computeShapeArea(shape, dims){
   return null;
 }
 function shapeLabel(shape){ const m = BED_SHAPES.find(function(s){ return s.id === shape; }); return m ? m.label : shape; }
+function plantsPerM2(rowCm, plantCm){ if(!(rowCm > 0) || !(plantCm > 0)) return null; return 10000 / (rowCm * plantCm); }
 function bedDimsSummary(shape, dims){
   if(shape === "rectangle") return dims.length + "m × " + dims.width + "m";
+  if(shape === "trapezoid") return "length " + dims.length + "m, widths " + dims.width1 + "/" + dims.width2 + "m";
   if(shape === "right_triangle") return "base " + dims.base + "m, height " + dims.height + "m";
   if(shape === "acute_triangle") return "sides " + dims.sideA + "/" + dims.sideB + "/" + dims.sideC + "m";
   return "";
@@ -1365,9 +1413,9 @@ function HomeScreen(state){
       }),
 
       // Farm area — only shown once beds have been added via Settings > Calculator > Area calculator.
-      (state.areaBeds && state.areaBeds.length > 0) && e("div", { className:"calc-total", style:{ margin:"0 20px 18px" } },
+      (state.areaBeds && state.areaBeds.length > 0) && e("div", { className:"calc-total", style:{ margin:"12px 16px 18px" } },
         e("span", null, "Farm area"),
-        e("span", null, state.areaBeds.length + " bed" + (state.areaBeds.length===1?"":"s") + " · " + state.areaBeds.reduce(function(sum,b){ return sum+b.area; },0).toFixed(1) + " m²")
+        e("span", null, state.areaBeds.length + " plot" + (state.areaBeds.length===1?"":"s") + " · " + state.areaBeds.reduce(function(sum,b){ return sum+b.area; },0).toFixed(1) + " m²")
       ),
 
       // What must I do now? — up to three tracked activities, most important first.
@@ -1836,18 +1884,20 @@ function AreaCalculatorModal(props){
   const beds = props.beds || [];
   const [shape, setShape] = useState("rectangle");
   const [length, setLength] = useState(""); const [width, setWidth] = useState("");
+  const [width2, setWidth2] = useState("");
   const [base, setBase] = useState(""); const [height, setHeight] = useState("");
   const [sideA, setSideA] = useState(""); const [sideB, setSideB] = useState(""); const [sideC, setSideC] = useState("");
   const [error, setError] = useState("");
 
   function currentDims(){
     if(shape === "rectangle") return { length: length, width: width };
+    if(shape === "trapezoid") return { length: length, width1: width, width2: width2 };
     if(shape === "right_triangle") return { base: base, height: height };
     return { sideA: sideA, sideB: sideB, sideC: sideC };
   }
   const previewArea = computeShapeArea(shape, currentDims());
 
-  function resetFields(){ setLength(""); setWidth(""); setBase(""); setHeight(""); setSideA(""); setSideB(""); setSideC(""); setError(""); }
+  function resetFields(){ setLength(""); setWidth(""); setWidth2(""); setBase(""); setHeight(""); setSideA(""); setSideB(""); setSideC(""); setError(""); }
 
   function handleAdd(){
     const dims = currentDims();
@@ -1865,22 +1915,28 @@ function AreaCalculatorModal(props){
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
       e("h2", null, "Area calculator"),
-      e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Add each bed's shape and size. Press Add after each one — one bed or a hundred, the total builds up below."),
 
       e("div", { className:"shape-select" }, BED_SHAPES.map(function(s){
-        return e("button", { key: s.id, className:"shape-btn" + (shape===s.id ? " active" : ""), onClick: function(){ setShape(s.id); setError(""); } }, s.label);
+        return e("button", { key: s.id, className:"shape-btn" + (shape===s.id ? " active" : ""), onClick: function(){ setShape(s.id); setError(""); } },
+          shapeIconSvg(s.id), e("div", { className:"shape-btn-label" }, s.label));
       })),
 
       shape === "rectangle" && e("div", { className:"field-row" },
         e("div", { className:"field" }, e("label", null, "Length (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: length, onChange: function(ev){ setLength(ev.target.value); } })),
         e("div", { className:"field" }, e("label", null, "Width (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: width, onChange: function(ev){ setWidth(ev.target.value); } }))
       ),
+      shape === "trapezoid" && e(React.Fragment, null,
+        e("div", { className:"field-row" },
+          e("div", { className:"field" }, e("label", null, "Length (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: length, onChange: function(ev){ setLength(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, "Width A (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: width, onChange: function(ev){ setWidth(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, "Width B (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: width2, onChange: function(ev){ setWidth2(ev.target.value); } }))
+        )
+      ),
       shape === "right_triangle" && e("div", { className:"field-row" },
         e("div", { className:"field" }, e("label", null, "Base (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: base, onChange: function(ev){ setBase(ev.target.value); } })),
         e("div", { className:"field" }, e("label", null, "Height (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: height, onChange: function(ev){ setHeight(ev.target.value); } }))
       ),
       shape === "acute_triangle" && e(React.Fragment, null,
-        e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Measure all three sides of the bed."),
         e("div", { className:"field-row" },
           e("div", { className:"field" }, e("label", null, "Side A (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideA, onChange: function(ev){ setSideA(ev.target.value); } })),
           e("div", { className:"field" }, e("label", null, "Side B (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideB, onChange: function(ev){ setSideB(ev.target.value); } })),
@@ -1888,17 +1944,17 @@ function AreaCalculatorModal(props){
         )
       ),
 
-      previewArea !== null && e("div", { className:"hint", style:{ marginBottom:"8px" } }, "This bed: " + previewArea.toFixed(1) + " m²"),
+      previewArea !== null && e("div", { className:"hint", style:{ marginBottom:"8px" } }, "This plot: " + previewArea.toFixed(1) + " m²"),
       error && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"8px" } }, error),
 
-      e("button", { className:"add-btn", onClick: handleAdd }, "+ Add this bed"),
+      e("button", { className:"add-btn", onClick: handleAdd }, "+ Add this plot"),
 
-      beds.length > 0 && e("div", { className:"calc-total" }, e("span", null, beds.length + " bed" + (beds.length===1?"":"s")), e("span", null, totalArea.toFixed(1) + " m²")),
+      beds.length > 0 && e("div", { className:"calc-total" }, e("span", null, beds.length + " plot" + (beds.length===1?"":"s")), e("span", null, totalArea.toFixed(1) + " m²")),
 
       beds.length > 0 && e("div", { style:{ marginTop:"6px" } }, beds.map(function(b, i){
         return e("div", { className:"bed-row", key: b.id },
           e("div", null,
-            e("div", { style:{ fontSize:"13px", fontWeight:700 } }, "Bed " + (i+1) + " — " + shapeLabel(b.shape)),
+            e("div", { style:{ fontSize:"13px", fontWeight:700 } }, "Plot " + (i+1) + " — " + shapeLabel(b.shape)),
             e("div", { className:"hint" }, bedDimsSummary(b.shape, b.dims) + " · " + b.area.toFixed(1) + " m²")
           ),
           e("button", { className:"bed-remove", onClick: function(){ props.onRemove(b.id); } }, "Remove")
@@ -1915,17 +1971,18 @@ function AreaCalculatorModal(props){
 const SPRAY_CALC_CATEGORIES = ["Foliar / liquid fertilizer", "Herbicide", "Insecticide", "Other"];
 function SprayCalculatorModal(props){
   const [category, setCategory] = useState(SPRAY_CALC_CATEGORIES[0]);
-  const [overrideBeds, setOverrideBeds] = useState("");
+  const [overrideArea, setOverrideArea] = useState("");
   const [rateMl, setRateMl] = useState("");
   const [ratePerLiters, setRatePerLiters] = useState("");
   const [tankSizeL, setTankSizeL] = useState("");
-  const [bedsPerTank, setBedsPerTank] = useState("");
+  const [areaPerTank, setAreaPerTank] = useState("");
   const [bottleSizeMl, setBottleSizeMl] = useState("");
   const [bufferPct, setBufferPct] = useState("10");
+  const [calibrateOpen, setCalibrateOpen] = useState(false);
 
-  const totalBeds = overrideBeds.trim() ? Number(overrideBeds) : props.bedsCount;
-  const bedsPerTankNum = Number(bedsPerTank);
-  const tanksNeeded = (totalBeds > 0 && bedsPerTankNum > 0) ? Math.ceil(totalBeds / bedsPerTankNum) : null;
+  const totalArea = overrideArea.trim() ? Number(overrideArea) : props.totalArea;
+  const areaPerTankNum = Number(areaPerTank);
+  const tanksNeeded = (totalArea > 0 && areaPerTankNum > 0) ? Math.ceil(totalArea / areaPerTankNum) : null;
   const rateMlNum = Number(rateMl), ratePerLitersNum = Number(ratePerLiters), tankSizeNum = Number(tankSizeL), bottleSizeNum = Number(bottleSizeMl);
   const bufferNum = bufferPct.trim() ? Number(bufferPct) : 0;
   const mlPerTank = (rateMlNum > 0 && ratePerLitersNum > 0 && tankSizeNum > 0) ? (rateMlNum / ratePerLitersNum) * tankSizeNum : null;
@@ -1936,7 +1993,6 @@ function SprayCalculatorModal(props){
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
       e("h2", null, "Foliar / herbicide / insecticide"),
-      e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Works out tanks, total product, and bottles to buy — using your saved area."),
 
       e("div", { className:"field" }, e("label", null, "Product category"),
         e("select", { value: category, onChange: function(ev){ setCategory(ev.target.value); } },
@@ -1944,21 +2000,23 @@ function SprayCalculatorModal(props){
 
       e("div", { className:"hint", style:{ marginBottom:"10px" } },
         props.bedsCount > 0
-          ? "Using saved area: " + props.bedsCount + " beds · " + props.totalArea.toFixed(1) + " m²"
-          : "No beds saved yet in the Area calculator — enter a total below."),
-      e("div", { className:"field" }, e("label", null, "Override total beds (optional)"),
-        e("input", { type:"number", min:"0", inputMode:"numeric", value: overrideBeds, placeholder: String(props.bedsCount || ""), onChange: function(ev){ setOverrideBeds(ev.target.value); } })),
+          ? "Using saved area: " + props.bedsCount + " plots · " + props.totalArea.toFixed(1) + " m²"
+          : "No plots saved yet in the Area calculator — enter a total below."),
+      e("div", { className:"field" }, e("label", null, "Override total area, m² (optional)"),
+        e("input", { type:"number", min:"0", inputMode:"decimal", placeholder: props.totalArea ? props.totalArea.toFixed(1) : "", value: overrideArea, onChange: function(ev){ setOverrideArea(ev.target.value); } })),
 
       e("div", { className:"field-row" },
         e("div", { className:"field" }, e("label", null, "Product rate (ml)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: rateMl, onChange: function(ev){ setRateMl(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "per how many L water"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: ratePerLiters, onChange: function(ev){ setRatePerLiters(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, "Per how many L"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: ratePerLiters, onChange: function(ev){ setRatePerLiters(ev.target.value); } }))
       ),
-      e("div", { className:"hint", style:{ marginTop:"-10px", marginBottom:"14px" } }, "From the product label — e.g. 20ml per 20L of water."),
 
       e("div", { className:"field-row" },
         e("div", { className:"field" }, e("label", null, "Tank size (L)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: tankSizeL, onChange: function(ev){ setTankSizeL(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "Beds per full tank"), e("input", { type:"number", min:"0", inputMode:"decimal", value: bedsPerTank, onChange: function(ev){ setBedsPerTank(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, "m² per tank"), e("input", { type:"number", min:"0", inputMode:"decimal", value: areaPerTank, onChange: function(ev){ setAreaPerTank(ev.target.value); } }))
       ),
+      e("button", { className:"suggest-btn", onClick: function(){ setCalibrateOpen(true); } },
+        "Calibrate my sprayer",
+        e("span", { className:"suggest-sub" }, "Measure it for real instead of guessing")),
 
       e("div", { className:"field-row" },
         e("div", { className:"field" }, e("label", null, "Bottle size (ml)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 1000", value: bottleSizeMl, onChange: function(ev){ setBottleSizeMl(ev.target.value); } })),
@@ -1974,46 +2032,144 @@ function SprayCalculatorModal(props){
       e("div", { className:"modal-actions" },
         e("button", { className:"btn btn-primary", onClick: props.onClose }, "Done")
       )
+    ),
+
+    calibrateOpen && e(SprayCalibrationModal, {
+      tankSizeL: tankSizeNum,
+      onUse: function(val){ setAreaPerTank(String(Math.round(val * 10) / 10)); setCalibrateOpen(false); },
+      onClose: function(){ setCalibrateOpen(false); }
+    })
+  );
+}
+
+function SprayCalibrationModal(props){
+  const [testLength, setTestLength] = useState("");
+  const [testWidth, setTestWidth] = useState("");
+  const [waterUsedL, setWaterUsedL] = useState("");
+
+  const lengthNum = Number(testLength), widthNum = Number(testWidth), waterNum = Number(waterUsedL);
+  const testArea = (lengthNum > 0 && widthNum > 0) ? lengthNum * widthNum : null;
+  const areaPerTank = (testArea != null && waterNum > 0 && props.tankSizeL > 0) ? (props.tankSizeL * testArea) / waterNum : null;
+
+  return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, "Calibrate my sprayer"),
+      e("div", { className:"hint", style:{ marginBottom:"14px" } },
+        "Mark a small patch, spray it with water only at your normal pace, and measure what you used. Replaces guessing."),
+
+      !(props.tankSizeL > 0) && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"10px" } }, "Enter your tank size on the previous screen first."),
+
+      e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, "Test patch length (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: testLength, onChange: function(ev){ setTestLength(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, "Test patch width (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: testWidth, onChange: function(ev){ setTestWidth(ev.target.value); } }))
+      ),
+      testArea != null && e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Test area: " + testArea.toFixed(1) + " m²"),
+
+      e("div", { className:"field" }, e("label", null, "Water used to spray it (L)"),
+        e("input", { type:"number", min:"0", inputMode:"decimal", value: waterUsedL, onChange: function(ev){ setWaterUsedL(ev.target.value); } })),
+
+      e("div", { className:"calc-result" },
+        e("div", { className:"calc-result-row total" }, e("span", null, "Your tank covers"), e("span", null, areaPerTank != null ? areaPerTank.toFixed(1) + " m²" : "—"))
+      ),
+
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-secondary", onClick: props.onClose }, "Cancel"),
+        areaPerTank != null && e("button", { className:"btn btn-primary", onClick: function(){ props.onUse(areaPerTank); } }, "Use this value")
+      )
     )
   );
 }
 
 function FertilizerCalculatorModal(props){
+  const [mode, setMode] = useState("area"); // "area" or "plant"
+  const [fertilizerType, setFertilizerType] = useState("DAP");
   const [overrideArea, setOverrideArea] = useState("");
   const [rateKg, setRateKg] = useState("");
   const [ratePerM2, setRatePerM2] = useState("");
+  const [rowSpacingCm, setRowSpacingCm] = useState("");
+  const [plantSpacingCm, setPlantSpacingCm] = useState("");
+  const [perPlantG, setPerPlantG] = useState("");
   const [bufferPct, setBufferPct] = useState("10");
 
   const totalArea = overrideArea.trim() ? Number(overrideArea) : props.totalArea;
-  const rateKgNum = Number(rateKg), ratePerM2Num = Number(ratePerM2);
   const bufferNum = bufferPct.trim() ? Number(bufferPct) : 0;
-  const totalKg = (rateKgNum > 0 && ratePerM2Num > 0 && totalArea > 0) ? (rateKgNum / ratePerM2Num) * totalArea : null;
+  const composition = FERTILIZER_COMPOSITION[fertilizerType];
+
+  // Area-based math
+  const rateKgNum = Number(rateKg), ratePerM2Num = Number(ratePerM2);
+  const areaTotalKg = (rateKgNum > 0 && ratePerM2Num > 0 && totalArea > 0) ? (rateKgNum / ratePerM2Num) * totalArea : null;
+
+  // Per-plant math: plant count from area ÷ (row spacing × plant spacing), then × dose per plant
+  const rowM = Number(rowSpacingCm) / 100, plantM = Number(plantSpacingCm) / 100;
+  const plantCount = (rowM > 0 && plantM > 0 && totalArea > 0) ? Math.floor(totalArea / (rowM * plantM)) : null;
+  const perPlantGNum = Number(perPlantG);
+  const plantTotalKg = (plantCount != null && perPlantGNum > 0) ? (plantCount * perPlantGNum) / 1000 : null;
+
+  const totalKg = mode === "area" ? areaTotalKg : plantTotalKg;
   const totalKgWithBuffer = totalKg != null ? totalKg * (1 + bufferNum / 100) : null;
 
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
       e("h2", null, "Granular fertilizer"),
-      e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Works out total kg to buy for your area, buffer included — you decide the bag split at the shop."),
 
       e("div", { className:"hint", style:{ marginBottom:"10px" } },
         props.bedsCount > 0
-          ? "Using saved area: " + props.bedsCount + " beds · " + props.totalArea.toFixed(1) + " m²"
-          : "No beds saved yet in the Area calculator — enter a total below."),
+          ? "Using saved area: " + props.bedsCount + " plots · " + props.totalArea.toFixed(1) + " m²"
+          : "No plots saved yet in the Area calculator — enter a total below."),
       e("div", { className:"field" }, e("label", null, "Override total area, m² (optional)"),
         e("input", { type:"number", min:"0", inputMode:"decimal", placeholder: props.totalArea ? props.totalArea.toFixed(1) : "", value: overrideArea, onChange: function(ev){ setOverrideArea(ev.target.value); } })),
 
-      e("div", { className:"field-row" },
-        e("div", { className:"field" }, e("label", null, "Fertilizer rate (kg)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 2", value: rateKg, onChange: function(ev){ setRateKg(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "per how many m²"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 10", value: ratePerM2, onChange: function(ev){ setRatePerM2(ev.target.value); } }))
+      e("div", { className:"field" }, e("label", null, "Fertilizer"),
+        e("select", { value: fertilizerType, onChange: function(ev){ setFertilizerType(ev.target.value); } },
+          FERTILIZER_TYPES.map(function(t){ return e("option", { value:t, key:t }, t); }))),
+      composition && e("div", { className:"hint", style:{ marginBottom:"14px" } },
+        "Typical: " + composition.n + "% N" + (composition.p ? ", " + composition.p + "% P₂O₅" : "") + (composition.k ? ", " + composition.k + "% K₂O" : "") + (composition.ca ? ", " + composition.ca + "% Ca" : "") + " — check your own bag, grades vary."),
+
+      e("div", { className:"shape-select" },
+        e("button", { className:"shape-btn" + (mode==="area" ? " active" : ""), onClick: function(){ setMode("area"); } }, e("div", { className:"shape-btn-label" }, "By area")),
+        e("button", { className:"shape-btn" + (mode==="plant" ? " active" : ""), onClick: function(){ setMode("plant"); } }, e("div", { className:"shape-btn-label" }, "By plant count"))
       ),
-      e("div", { className:"hint", style:{ marginTop:"-10px", marginBottom:"14px" } }, "E.g. 2kg per 10m² — whatever your usual rate is."),
+
+      mode === "area" && e(React.Fragment, null,
+        (SUGGESTED_FERT_RATES[fertilizerType] || []).length > 0
+          ? (SUGGESTED_FERT_RATES[fertilizerType] || []).map(function(preset, i){
+              return e("button", { key: i, className:"suggest-btn", onClick: function(){ setRateKg(preset.rateKg); setRatePerM2(preset.ratePerM2); } },
+                preset.label,
+                e("span", { className:"suggest-sub" }, preset.sub));
+            })
+          : e("div", { className:"hint", style:{ marginBottom:"14px" } }, "No suggested rate for " + fertilizerType + " yet — enter the rate from your product label or extension guide."),
+
+        e("div", { className:"field-row" },
+          e("div", { className:"field" }, e("label", null, "Fertilizer rate (kg)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 2", value: rateKg, onChange: function(ev){ setRateKg(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, "Per how many m²"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 10", value: ratePerM2, onChange: function(ev){ setRatePerM2(ev.target.value); } }))
+        )
+      ),
+
+      mode === "plant" && e(React.Fragment, null,
+        e("button", { className:"suggest-btn", onClick: function(){ setRowSpacingCm("30"); setPlantSpacingCm("9"); } },
+          "Wider spacing",
+          e("span", { className:"suggest-sub" }, "Row 30cm × plant 9cm · ≈" + Math.round(plantsPerM2(30,9)) + " plants/m² · KALRO onion production guide")),
+        e("button", { className:"suggest-btn", onClick: function(){ setRowSpacingCm("22"); setPlantSpacingCm("9"); } },
+          "Tighter spacing",
+          e("span", { className:"suggest-sub" }, "Row 20–25cm × plant 8–10cm · ≈" + Math.round(plantsPerM2(22,9)) + " plants/m² · South Africa onion planting guide")),
+
+        e("div", { className:"field-row" },
+          e("div", { className:"field" }, e("label", null, "Row spacing (cm)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 30", value: rowSpacingCm, onChange: function(ev){ setRowSpacingCm(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, "Plant spacing (cm)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 9", value: plantSpacingCm, onChange: function(ev){ setPlantSpacingCm(ev.target.value); } }))
+        ),
+        plantCount != null && e("div", { className:"hint", style:{ marginBottom:"10px" } },
+          "≈ " + plantCount.toLocaleString() + " plants at that spacing over " + totalArea.toFixed(1) + " m² (≈" + Math.round(plantsPerM2(Number(rowSpacingCm), Number(plantSpacingCm))) + " plants/m²)"),
+
+        e("div", { className:"field" }, e("label", null, "Fertilizer per plant (g)"),
+          e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"from your product's label", value: perPlantG, onChange: function(ev){ setPerPlantG(ev.target.value); } }))
+      ),
 
       e("div", { className:"field" }, e("label", null, "Waste buffer (%)"),
         e("input", { type:"number", min:"0", inputMode:"decimal", value: bufferPct, onChange: function(ev){ setBufferPct(ev.target.value); } })),
 
       e("div", { className:"calc-result" },
-        e("div", { className:"calc-result-row" }, e("span", null, "Base need"), e("span", null, totalKg != null ? totalKg.toFixed(1) + " kg" : "—")),
-        e("div", { className:"calc-result-row total" }, e("span", null, "Buy this much (with buffer)"), e("span", null, totalKgWithBuffer != null ? totalKgWithBuffer.toFixed(1) + " kg" : "—"))
+        e("div", { className:"calc-result-row" }, e("span", null, "Base need"), e("span", null, totalKg != null ? totalKg.toFixed(2) + " kg" : "—")),
+        e("div", { className:"calc-result-row total" }, e("span", null, "Buy this much (with buffer)"), e("span", null, totalKgWithBuffer != null ? totalKgWithBuffer.toFixed(2) + " kg" : "—"))
       ),
 
       e("div", { className:"modal-actions" },
@@ -2122,7 +2278,7 @@ function SettingsScreen(props){
     e("div", { className:"section-label" }, "Calculator"),
     e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
       e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(true); } },
-        e("span", null, "Calculator" + (areaBeds.length > 0 ? " · " + areaBeds.length + " beds · " + Math.round(totalBedArea) + " m²" : "")),
+        e("span", null, "Calculator"),
         e("span", { className:"chev" }, "›"))
     ),
 
@@ -2173,10 +2329,9 @@ function SettingsScreen(props){
     calcMenuOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setCalcMenuOpen(false); } },
       e("div", { className:"modal" },
         e("h2", null, "Calculator"),
-        e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Work out usable beds, then how much product to buy."),
         e("div", { className:"settings-block", style:{ padding:"4px 16px", margin:0 } },
           e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setAreaCalcOpen(true); } },
-            e("span", null, "Area calculator" + (areaBeds.length > 0 ? " · " + areaBeds.length + " beds" : "")), e("span", { className:"chev" }, "›")),
+            e("span", null, "Area calculator" + (areaBeds.length > 0 ? " · " + areaBeds.length + " plots" : "")), e("span", { className:"chev" }, "›")),
           e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setSprayCalcOpen(true); } },
             e("span", null, "Foliar / herbicide / insecticide"), e("span", { className:"chev" }, "›")),
           e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setFertCalcOpen(true); } },
