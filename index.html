@@ -184,7 +184,7 @@
   .field select:disabled{color:var(--text-muted);}
   .hint{font-size:11px; color:var(--text-muted); margin-top:6px;}
 
-  .why-block{ background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:16px; padding:16px; }
+  .why-block{ background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:16px; padding:16px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .why-title{ font-size:15px; font-weight:700; color:var(--text-primary); margin-bottom:8px; }
   .why-status-row{ margin-bottom:6px; }
   .why-status-badge{ display:inline-block; font-size:11px; font-weight:700; padding:4px 10px; border-radius:20px; }
@@ -293,6 +293,281 @@ const useEffect = React.useEffect;
 const useMemo = React.useMemo;
 
 const STORAGE_KEY = "japhe_farm_v1";
+const LANG_KEY = "japhe_farm_lang";
+
+// --- Language / translation ---------------------------------------------------------------
+// Plain module-level dictionary + a single t() reader, deliberately not React Context: this
+// codebase is one function per screen/component with no build step, so a global "currentLang"
+// that App() updates on every render (before returning) lets any component call t() directly
+// without threading a lang/t prop through every function signature. Safe because renders are
+// synchronous — every t() call during a given render sees the lang that render is for.
+// Swahili wording is written in plain, everyday language a farmer with no formal education
+// would use and understand — not formal/literary Swahili, and not a literal word-for-word
+// translation of the English phrasing. Technical product/unit terms (DAP, CAN, NPK, m², kg)
+// are left as-is, since that's how they're actually used and sold in Tanzania.
+let currentLang = "en";
+const translations = {
+  en: {
+    "nav.home": "Home", "nav.why": "Why", "nav.history": "History", "nav.settings": "Settings",
+
+    "common.cancel": "Cancel", "common.save": "Save", "common.add": "Add", "common.delete": "Delete",
+    "common.edit": "Edit", "common.close": "Close", "common.done": "Done", "common.back": "Back",
+    "common.continue": "Continue", "common.remove": "Remove",
+    "common.notLoggedYet": "Not logged yet.", "common.notLoggedYetTap": "Not logged yet · tap to add",
+    "common.cantBeUndone": "This can't be undone.",
+    "modal.editEvent": "Edit event", "modal.addEvent": "Add event",
+    "modal.deleteEventQ": "Delete this event?",
+    "modal.editObservation": "Edit observation", "modal.addObservation": "Add observation",
+    "modal.deleteObservationQ": "Delete this observation?",
+    "modal.fieldObservation": "Field observation", "modal.addPrefix": "+ Add ",
+
+    "settings.title": "Settings", "settings.farmProfile": "Farm profile", "settings.farmName": "Farm name",
+    "settings.cropType": "Crop type", "settings.moreCrops": "More crops can be added here later.",
+    "settings.logNewEvent": "Log a new event", "settings.addNewEvent": "+ Add new event",
+    "settings.fieldObservations": "Field observations", "settings.addObservation": "+ Add observation",
+    "settings.calculator": "Calculator", "settings.dataBackup": "Data & backup",
+    "settings.exportBackup": "Export backup", "settings.restoreBackup": "Restore from backup",
+    "settings.language": "Language",
+
+    "why.title": "Current stage advisory", "why.fieldHealth": "Field health",
+    "why.noActiveSeason": "No active season yet. Log a Sowing date to start.",
+    "why.routineActions": "Routine actions", "why.noRoutineActions": "No routine actions logged yet.",
+    "why.guardrailNotes": "Guardrail notes", "why.lastDone": "Last done",
+    "why.guideline": "Guideline", "why.forNextTime": "For next time",
+    "why.nothingToCheck": "Nothing to check at this stage",
+    "why.nothingToCheckTail": "right now. This screen will show something once you're at a stage boundary the engine tracks.",
+
+    "history.title": "History", "history.allActivities": "All activities",
+    "history.tapForDetails": "Tap any activity for full details, editing, or delete.",
+    "history.seasonTimeline": "Season timeline", "history.noMilestones": "No milestones logged yet.",
+    "history.noObservations": "No observations logged yet.",
+
+    "home.logSowingPrompt": "Log a sowing date in Settings to start tracking.",
+    "home.seasonComplete": "Season complete",
+    "home.guniaSold": "gunia sold", "home.guniaStored": "gunia stored",
+
+    "time.today": "Today", "time.yesterday": "Yesterday", "time.upcoming": "Upcoming", "time.daysAgo": "days ago",
+
+    "calc.area": "Area calculator", "calc.spray": "Foliar / herbicide / insecticide", "calc.fert": "Granular fertilizer",
+    "calc.addPlot": "+ Add this plot",
+
+    "field.date": "Date", "field.fillOnlyWhatSeen": "Fill in only what you actually saw today. Skip the rest.",
+    "field.growthStage": "Growth stage", "field.leafCount": "Leaf count (optional)",
+    "field.plantHeight": "Plant height, cm (optional)", "field.soilMoisture": "Soil moisture",
+    "field.leafColour": "Leaf colour", "field.pestsSeen": "Pests seen", "field.diseaseSymptoms": "Disease symptoms",
+    "field.topsStatus": "Tops / bulb status", "field.curingStatus": "Curing / neck condition",
+    "field.sunlightEffect": "Sunlight effect after mulch removal", "field.weather": "Recent weather",
+    "field.notes": "Notes (optional)", "field.notesPlaceholder": "Anything else worth remembering",
+    "field.worthRecording": "Worth recording what you noticed here every time.",
+    "field.noteOptional": "Note (optional)",
+
+    "field.eventType": "Event type", "field.timeline": "timeline", "field.sprayType": "Spray type",
+    "field.fertilizerType": "Fertilizer type", "field.quantityKg": "Quantity (kg)", "field.outcome": "Outcome",
+    "field.quantityGunia": "Quantity (gunia)", "field.priceTsh": "Price, Tsh (optional)",
+    "field.transplantSpanQ": "Did transplanting span multiple days?",
+    "field.transplantSpanHint": "If yes, each day's age is tracked using the finish date, not an average, so timing advice stays accurate for the whole field.",
+    "field.startDate": "Start date", "field.finishDate": "Finish date", "field.observation": "Observation",
+    "field.sprayObsPlaceholder": "e.g. thrips on leaves, north side", "field.fertObsPlaceholder": "e.g. slight yellowing before application",
+
+    "calc.length": "Length (m)", "calc.width": "Width (m)", "calc.widthA": "Width A (m)", "calc.widthB": "Width B (m)",
+    "calc.base": "Base (m)", "calc.height": "Height (m)", "calc.sideA": "Side A (m)", "calc.sideB": "Side B (m)", "calc.sideC": "Side C (m)",
+    "calc.thisPlot": "This plot", "calc.plot": "Plot", "calc.remove": "Remove",
+
+    "calc.productCategory": "Product category", "calc.usingSavedArea": "Using saved area", "calc.plotsWord": "plots",
+    "calc.noPlotsSaved": "No plots saved yet in the Area calculator — enter a total below.",
+    "calc.overrideArea": "Override total area, m² (optional)", "calc.productRate": "Product rate (ml)",
+    "calc.perHowManyL": "Per how many L", "calc.tankSize": "Tank size (L)", "calc.areaPerTank": "m² per tank",
+    "calc.calibrateSprayer": "Calibrate my sprayer", "calc.calibrateSub": "Measure it for real instead of guessing",
+    "calc.bottleSize": "Bottle size (ml)", "calc.wasteBuffer": "Waste buffer (%)",
+    "calc.tankRefills": "Tank refills needed", "calc.totalProduct": "Total product (with buffer)", "calc.bottlesToBuy": "Bottles to buy",
+
+    "calc.calibrateTitle": "Calibrate my sprayer",
+    "calc.calibrateHint": "Mark a small patch, spray it with water only at your normal pace, and measure what you used. Replaces guessing.",
+    "calc.enterTankFirst": "Enter your tank size on the previous screen first.",
+    "calc.testPatchLength": "Test patch length (m)", "calc.testPatchWidth": "Test patch width (m)",
+    "calc.testArea": "Test area", "calc.waterUsed": "Water used to spray it (L)",
+    "calc.tankCovers": "Your tank covers", "calc.useThisValue": "Use this value",
+
+    "calc.fertilizer": "Fertilizer", "calc.typical": "Typical", "calc.checkOwnBag": "check your own bag, grades vary.",
+    "calc.byArea": "By area", "calc.byPlantCount": "By plant count", "calc.noSuggestedRate": "No suggested rate for",
+    "calc.noSuggestedRateTail": "yet — enter the rate from your product label or extension guide.",
+    "calc.fertRate": "Fertilizer rate (kg)", "calc.perHowManyM2": "Per how many m²",
+    "calc.widerSpacing": "Wider spacing", "calc.tighterSpacing": "Tighter spacing",
+    "calc.rowSpacing": "Row spacing (cm)", "calc.plantSpacing": "Plant spacing (cm)",
+    "calc.approxPlantsAt": "plants at that spacing over", "calc.approxPlantsM2": "plants/m²",
+    "calc.fertPerPlant": "Fertilizer per plant (g)", "calc.fromProductLabel": "from your product's label",
+    "calc.baseNeed": "Base need", "calc.buyThisMuch": "Buy this much (with buffer)",
+
+    "why.matchesFull": "Your latest observation matches the guideline. Tap to see why.",
+    "why.matchesPartial": "Getting close. Tap to see what's matched so far.",
+    "why.matchesGuideline": "Matches guideline", "why.partiallyMatches": "Partially matches", "why.notYetMatching": "Not yet matching",
+    "why.noObsLoggedShort": "No observation logged yet",
+    "why.whatGuidelineExpects": "What the guideline expects", "why.guidelinePrefix": "Guideline",
+    "why.youRecorded": "You recorded", "why.notRecordedYet": "Not recorded yet",
+    "why.whatWasObserved": "What was observed", "why.fromObservationLogged": "From your observation logged",
+    "why.noObsInStage": "No observation logged yet in this stage. Add one from Settings to see a real comparison here.",
+    "why.source": "Source",
+
+    "why.actionNeeded": "Action needed", "why.whatWasLogged": "What was logged", "why.logged": "Logged",
+    "why.whatToDo": "What to do", "why.whatToAvoid": "What to avoid",
+    "why.criticalConcern": "Critical concern", "why.highConcern": "High concern", "why.mediumConcern": "Medium concern", "why.lowConcern": "Low concern",
+    "why.fromObservationShort": "From your observation",
+
+    "why.seedlingsEmerged": "Seedlings emerged", "why.sunScorchLogged": "Sun scorch logged", "why.shadeErectedMeta": "Shade erected",
+
+    "why.timeWord": "time", "why.lastDoneShort": "last done", "why.timesWord": "Mara",
+
+    "ev.transplantCompletedOver": "Transplanting completed over", "ev.days": "days",
+    "ev.spraying": "Spraying", "ev.fertilizerApplication": "Fertilizer application",
+
+    "why.tapToSeeWhy": "Tap to see why.", "why.logged2": "Logged",
+    "home.farmArea": "Farm area", "home.nextAction": "Next action", "home.addToGetStarted": "Add fertilizer, spraying, or weeding from Settings.",
+
+    "settings.copied": "Copied.", "settings.copyFailedTapToSelect": "Couldn't copy automatically. Tap the text to select it, then copy.",
+    "settings.tapToSelect": "Tap the text to select it, then copy.",
+    "settings.notValidBackup": "That doesn't look like a valid backup. Check you copied the whole thing.",
+    "settings.couldntReadBackup": "Couldn't read that as a backup. Check you copied the whole thing.",
+    "settings.languageRow": "Language",
+
+    "settings.exportBackupTitle": "Export backup", "settings.exportHint": "Tap the text to select it, then copy. Paste it into Notes or a message to yourself.",
+    "common.copyToClipboard": "Copy to clipboard", "settings.replaceAllDataQ": "Replace all current data?",
+    "settings.pasteBackupHere": "Paste backup text here", "settings.replaceEverythingWarning": "This replaces everything on this phone with the pasted backup. Can't be undone.",
+    "settings.replaceData": "Replace data"
+  },
+  sw: {
+    "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
+
+    "common.cancel": "Ghairi", "common.save": "Hifadhi", "common.add": "Ongeza", "common.delete": "Futa",
+    "common.edit": "Badilisha", "common.close": "Funga", "common.done": "Imekamilika", "common.back": "Rudi",
+    "common.continue": "Endelea", "common.remove": "Ondoa",
+    "common.notLoggedYet": "Bado hujaweka kumbukumbu.", "common.notLoggedYetTap": "Bado hujaweka · gusa kuongeza",
+    "common.cantBeUndone": "Huwezi kurudisha nyuma baada ya hapa.",
+    "modal.editEvent": "Badilisha kumbukumbu", "modal.addEvent": "Ongeza kumbukumbu",
+    "modal.deleteEventQ": "Futa kumbukumbu hii?",
+    "modal.editObservation": "Badilisha uchunguzi", "modal.addObservation": "Ongeza uchunguzi",
+    "modal.deleteObservationQ": "Futa uchunguzi huu?",
+    "modal.fieldObservation": "Uchunguzi wa shambani", "modal.addPrefix": "+ Ongeza ",
+
+    "settings.title": "Mipangilio", "settings.farmProfile": "Taarifa za shamba", "settings.farmName": "Jina la shamba",
+    "settings.cropType": "Aina ya zao", "settings.moreCrops": "Mazao mengine yataongezwa hapa baadaye.",
+    "settings.logNewEvent": "Weka kumbukumbu mpya", "settings.addNewEvent": "+ Ongeza kumbukumbu mpya",
+    "settings.fieldObservations": "Uchunguzi wa shambani", "settings.addObservation": "+ Ongeza uchunguzi",
+    "settings.calculator": "Kikokotoo", "settings.dataBackup": "Taarifa na nakala rudufu",
+    "settings.exportBackup": "Toa nakala rudufu", "settings.restoreBackup": "Rudisha kutoka nakala rudufu",
+    "settings.language": "Lugha",
+
+    "why.title": "Ushauri wa hatua ya sasa", "why.fieldHealth": "Afya ya shamba",
+    "why.noActiveSeason": "Hakuna msimu unaoendelea bado. Weka tarehe ya kupanda ili kuanza.",
+    "why.routineActions": "Kazi za kawaida", "why.noRoutineActions": "Bado hakuna kazi za kawaida zilizowekwa.",
+    "why.guardrailNotes": "Maonyo ya wakati", "why.lastDone": "Ilifanyika mara ya mwisho",
+    "why.guideline": "Muongozo", "why.forNextTime": "Kwa mara ijayo",
+    "why.nothingToCheck": "Hakuna cha kuangalia katika hatua hii",
+    "why.nothingToCheckTail": "kwa sasa. Ukurasa huu utaonyesha kitu mara utakapofika hatua muhimu inayofuatiliwa.",
+
+    "history.title": "Historia", "history.allActivities": "Shughuli zote",
+    "history.tapForDetails": "Gusa shughuli yoyote kuona maelezo kamili, kubadilisha, au kufuta.",
+    "history.seasonTimeline": "Ratiba ya msimu", "history.noMilestones": "Bado hakuna hatua muhimu zilizowekwa.",
+    "history.noObservations": "Bado hakuna uchunguzi ulioekwa.",
+
+    "home.logSowingPrompt": "Weka tarehe ya kupanda kwenye Mipangilio ili kuanza kufuatilia.",
+    "home.seasonComplete": "Msimu umekamilika",
+    "home.guniaSold": "gunia zilizouzwa", "home.guniaStored": "gunia zilizohifadhiwa",
+
+    "time.today": "Leo", "time.yesterday": "Jana", "time.upcoming": "Inakuja", "time.daysAgo": "siku zilizopita",
+
+    "calc.area": "Kikokotoo cha eneo", "calc.spray": "Dawa ya majani / magugu / wadudu", "calc.fert": "Mbolea ya chembechembe",
+    "calc.addPlot": "+ Ongeza shamba hili",
+
+    "field.date": "Tarehe", "field.fillOnlyWhatSeen": "Jaza tu ulichokiona leo. Ruka mengine.",
+    "field.growthStage": "Hatua ya ukuaji", "field.leafCount": "Idadi ya majani (si lazima)",
+    "field.plantHeight": "Urefu wa mmea, sm (si lazima)", "field.soilMoisture": "Unyevu wa udongo",
+    "field.leafColour": "Rangi ya majani", "field.pestsSeen": "Wadudu waliionekana", "field.diseaseSymptoms": "Dalili za ugonjwa",
+    "field.topsStatus": "Hali ya majani / balbu", "field.curingStatus": "Hali ya kukausha / shingo",
+    "field.sunlightEffect": "Athari ya jua baada ya kuondoa matandazo", "field.weather": "Hali ya hewa hivi karibuni",
+    "field.notes": "Maelezo (si lazima)", "field.notesPlaceholder": "Kitu kingine chochote cha kukumbuka",
+    "field.worthRecording": "Ni vizuri kuandika ulichokiona hapa kila wakati.",
+    "field.noteOptional": "Maelezo (si lazima)",
+
+    "field.eventType": "Aina ya kumbukumbu", "field.timeline": "ratiba", "field.sprayType": "Aina ya dawa",
+    "field.fertilizerType": "Aina ya mbolea", "field.quantityKg": "Kiasi (kg)", "field.outcome": "Matokeo",
+    "field.quantityGunia": "Kiasi (magunia)", "field.priceTsh": "Bei, Tsh (si lazima)",
+    "field.transplantSpanQ": "Je, kuhamisha miche kulichukua zaidi ya siku moja?",
+    "field.transplantSpanHint": "Kama ndiyo, umri wa kila siku unafuatiliwa kwa kutumia tarehe ya mwisho, si wastani, ili ushauri wa muda ubaki sahihi kwa shamba lote.",
+    "field.startDate": "Tarehe ya kuanza", "field.finishDate": "Tarehe ya mwisho", "field.observation": "Uchunguzi",
+    "field.sprayObsPlaceholder": "mfano: thrips kwenye majani, upande wa kaskazini", "field.fertObsPlaceholder": "mfano: njano kidogo kabla ya kuweka mbolea",
+
+    "calc.length": "Urefu (m)", "calc.width": "Upana (m)", "calc.widthA": "Upana A (m)", "calc.widthB": "Upana B (m)",
+    "calc.base": "Msingi (m)", "calc.height": "Kimo (m)", "calc.sideA": "Upande A (m)", "calc.sideB": "Upande B (m)", "calc.sideC": "Upande C (m)",
+    "calc.thisPlot": "Eneo hili", "calc.plot": "Eneo", "calc.remove": "Ondoa",
+
+    "calc.productCategory": "Aina ya dawa", "calc.usingSavedArea": "Inatumia eneo lililohifadhiwa", "calc.plotsWord": "maeneo",
+    "calc.noPlotsSaved": "Hakuna maeneo yaliyohifadhiwa bado kwenye Kikokotoo cha eneo — weka jumla hapa chini.",
+    "calc.overrideArea": "Badilisha jumla ya eneo, m² (si lazima)", "calc.productRate": "Kiasi cha dawa (ml)",
+    "calc.perHowManyL": "Kwa lita ngapi", "calc.tankSize": "Ukubwa wa tanki (L)", "calc.areaPerTank": "m² kwa kila tanki",
+    "calc.calibrateSprayer": "Pima bomba langu la kunyunyizia", "calc.calibrateSub": "Pima kwa uhalisia badala ya kukisia",
+    "calc.bottleSize": "Ukubwa wa chupa (ml)", "calc.wasteBuffer": "Akiba ya upotevu (%)",
+    "calc.tankRefills": "Idadi ya tanki zinazohitajika", "calc.totalProduct": "Jumla ya dawa (pamoja na akiba)", "calc.bottlesToBuy": "Chupa za kununua",
+
+    "calc.calibrateTitle": "Pima bomba langu la kunyunyizia",
+    "calc.calibrateHint": "Weka alama eneo dogo, nyunyizia maji tu kwa kasi yako ya kawaida, kisha pima ulichotumia. Hii inabadilisha kukisia.",
+    "calc.enterTankFirst": "Weka ukubwa wa tanki lako kwenye ukurasa uliopita kwanza.",
+    "calc.testPatchLength": "Urefu wa eneo la jaribio (m)", "calc.testPatchWidth": "Upana wa eneo la jaribio (m)",
+    "calc.testArea": "Eneo la jaribio", "calc.waterUsed": "Maji yaliyotumika kunyunyizia (L)",
+    "calc.tankCovers": "Tanki lako linatosha", "calc.useThisValue": "Tumia kiasi hiki",
+
+    "calc.fertilizer": "Mbolea", "calc.typical": "Kawaida", "calc.checkOwnBag": "angalia mfuko wako mwenyewe, aina hutofautiana.",
+    "calc.byArea": "Kwa eneo", "calc.byPlantCount": "Kwa idadi ya mimea", "calc.noSuggestedRate": "Hakuna kiasi kilichopendekezwa cha",
+    "calc.noSuggestedRateTail": "bado — weka kiasi kutoka kwenye lebo ya bidhaa yako au mwongozo wa ugani.",
+    "calc.fertRate": "Kiasi cha mbolea (kg)", "calc.perHowManyM2": "Kwa m² ngapi",
+    "calc.widerSpacing": "Nafasi kubwa", "calc.tighterSpacing": "Nafasi ndogo",
+    "calc.rowSpacing": "Nafasi kati ya mistari (sm)", "calc.plantSpacing": "Nafasi kati ya mimea (sm)",
+    "calc.approxPlantsAt": "mimea kwa nafasi hiyo katika", "calc.approxPlantsM2": "mimea/m²",
+    "calc.fertPerPlant": "Mbolea kwa kila mmea (g)", "calc.fromProductLabel": "kutoka kwenye lebo ya bidhaa yako",
+    "calc.baseNeed": "Uhitaji wa msingi", "calc.buyThisMuch": "Nunua kiasi hiki (pamoja na akiba)",
+
+    "why.matchesFull": "Uchunguzi wako wa mwisho unalingana na muongozo. Gusa kuona kwa nini.",
+    "why.matchesPartial": "Unakaribia. Gusa kuona kilicholingana hadi sasa.",
+    "why.matchesGuideline": "Inalingana na muongozo", "why.partiallyMatches": "Inalingana kiasi", "why.notYetMatching": "Bado hailingani",
+    "why.noObsLoggedShort": "Bado hakuna uchunguzi ulioekwa",
+    "why.whatGuidelineExpects": "Muongozo unatarajia nini", "why.guidelinePrefix": "Muongozo",
+    "why.youRecorded": "Uliandika", "why.notRecordedYet": "Bado hujaandika",
+    "why.whatWasObserved": "Kilichoonekana", "why.fromObservationLogged": "Kutoka kwenye uchunguzi wako ulioekwa",
+    "why.noObsInStage": "Bado hakuna uchunguzi ulioekwa katika hatua hii. Ongeza mmoja kutoka Mipangilio kuona ulinganisho wa kweli hapa.",
+    "why.source": "Chanzo",
+
+    "why.actionNeeded": "Hatua inahitajika", "why.whatWasLogged": "Kilichowekwa", "why.logged": "Imewekwa",
+    "why.whatToDo": "Cha kufanya", "why.whatToAvoid": "Cha kuepuka",
+    "why.criticalConcern": "Hatari kubwa", "why.highConcern": "Hatari ya juu", "why.mediumConcern": "Hatari ya kati", "why.lowConcern": "Hatari ndogo",
+    "why.fromObservationShort": "Kutoka kwenye uchunguzi wako",
+
+    "why.seedlingsEmerged": "Miche imeota", "why.sunScorchLogged": "Uharibifu wa jua umeekwa", "why.shadeErectedMeta": "Kivuli kimewekwa",
+
+    "why.timeWord": "mara", "why.lastDoneShort": "ilifanyika mara ya mwisho", "why.timesWord": "Mara",
+
+    "ev.transplantCompletedOver": "Kuhamisha miche kulikamilika kwa", "ev.days": "siku",
+    "ev.spraying": "Kunyunyizia dawa", "ev.fertilizerApplication": "Uwekaji wa mbolea",
+
+    "why.tapToSeeWhy": "Gusa kuona kwa nini.", "why.logged2": "Imewekwa",
+    "home.farmArea": "Eneo la shamba", "home.nextAction": "Hatua inayofuata", "home.addToGetStarted": "Ongeza mbolea, dawa, au palizi kutoka Mipangilio.",
+
+    "settings.copied": "Imenakiliwa.", "settings.copyFailedTapToSelect": "Imeshindwa kunakili moja kwa moja. Gusa maandishi kuyachagua, kisha nakili.",
+    "settings.tapToSelect": "Gusa maandishi kuyachagua, kisha nakili.",
+    "settings.notValidBackup": "Hii haionekani kama nakala rudufu sahihi. Hakikisha umenakili kila kitu.",
+    "settings.couldntReadBackup": "Imeshindwa kusoma hii kama nakala rudufu. Hakikisha umenakili kila kitu.",
+    "settings.languageRow": "Lugha",
+
+    "settings.exportBackupTitle": "Toa nakala rudufu", "settings.exportHint": "Gusa maandishi kuyachagua, kisha nakili. Bandika kwenye Notes au ujumbe kwako mwenyewe.",
+    "common.copyToClipboard": "Nakili", "settings.replaceAllDataQ": "Badilisha taarifa zote za sasa?",
+    "settings.pasteBackupHere": "Bandika maandishi ya nakala rudufu hapa", "settings.replaceEverythingWarning": "Hii itabadilisha kila kitu kwenye simu hii na nakala rudufu uliyobandika. Huwezi kurudisha nyuma.",
+    "settings.replaceData": "Badilisha taarifa"
+  }
+};
+function t(key){
+  const dict = translations[currentLang] || translations.en;
+  const val = dict[key];
+  if(val != null) return val;
+  return translations.en[key] != null ? translations.en[key] : key;
+}
 
 // kind: "milestone" = one-time crop-stage marker (Season timeline).
 // kind: "attention" = recurring action worth checking regularly.
@@ -317,10 +592,13 @@ const DISPOSITION_OPTIONS = ["Stored", "Sold"];
 // Priority order for "Needs your attention" — most important first. The section fills with
 // whichever of these already have data, skipping any not logged yet instead of showing a blank slot.
 const FULL_PRIORITY = ["fertilizer", "spray", "weeding", "irrigation", "mulch", "custom"];
-// During the nursery/germination phase, mulch is a one-time action (see ONE_TIME_ACTIONS)
-// rather than a recurring reminder, so it's excluded from the generic priority list there.
+// During the nursery/germination phase, both mulch and fertilizer are one-time actions rather
+// than recurring reminders: mulch is handled separately via ONE_TIME_ACTIONS, and nursery
+// fertilizer is a single basal application per ACTION_GUIDANCE.fertilizer.germination — not a
+// repeating routine through the nursery weeks. Showing either in the recurring "Next action"
+// rotation would re-surface something already done as if it still needed doing.
 function priorityCatsForPhase(heroPhase){
-  return heroPhase === "germination" ? FULL_PRIORITY.filter(function(id){ return id !== "mulch"; }) : FULL_PRIORITY;
+  return heroPhase === "germination" ? FULL_PRIORITY.filter(function(id){ return id !== "mulch" && id !== "fertilizer"; }) : FULL_PRIORITY;
 }
 const TOP_N = 4;
 
@@ -386,10 +664,65 @@ const OBS_SUNLIGHT_OPTIONS = ["No burn observed", "Mild scorch seen", "Shade ere
 function obsSunlightIndex(val){ return OBS_SUNLIGHT_OPTIONS.indexOf(val); }
 function obsCuringIndex(val){ return OBS_CURING_OPTIONS.indexOf(val); }
 
+// Display-only Swahili labels for every dropdown/select option value in the app. The English
+// value on the left is what's actually stored in events/observations and matched by the
+// engine (SYMPTOM_GROUPS, THREAT_RULES, FERTILIZER_RISK_PROFILE, etc.) — never changes.
+// Wording sourced from the user-supplied glossary; see /areas/onion-engine-sw-glossary.md.
+const OPTION_LABELS_SW = {
+  "Germination & establishment": "Mbegu zinaota na miche inaanza kukua",
+  "Vegetative growth": "Majani yanaendelea kukua",
+  "Bulb development": "Balbu inaanza kutengenezeka",
+  "Maturation": "Kitunguu kinaanza kukomaa",
+  "Ready for harvest check": "Kagua kama tayari kwa mavuno",
+  "Wet": "Chepechepe", "Moist": "Unyevu", "Dry": "Kavu",
+  "Dark green": "Kijani iliyokolea", "Green": "Kijani", "Light green": "Kijani hafifu", "Yellowing": "Inaanza kuwa njano",
+  "None seen": "Hakuna kuonekana", "Thrips": "Thrips", "Cutworms": "Viwavi wakatao miche", "Other": "Nyingine",
+  "Silvery-white patches or streaks": "Mistari au mabaka meupe yanayong'aa kama fedha kwenye majani",
+  "Purple lesions with yellow/orange border": "Madoa ya zambarau yenye ukingo wa njano au chungwa",
+  "Grey-white oval spots with a silvery halo": "Madoa ya mviringo ya kijivu-nyeupe yenye ukingo unaong'aa",
+  "Purple-grey velvety growth, leaf tips dying back": "Ukungu wa kijivu-zambarau kama manyoya, ncha za majani zinakauka",
+  "Soft or rotting neck": "Shingo ya kitunguu imelainika au inaoza",
+  "Not noted": "Sikuzingatia", "Humid": "Hali ya unyevu", "Heavy rain recently": "Mvua kubwa hivi karibuni",
+  "Upright, no bulb yet": "Wima, balbu bado haijaanza",
+  "Base starting to swell": "Chini ya mmea inaanza kuvimba",
+  "Bulbs visibly forming": "Balbu inaanza kuonekana",
+  "Tops starting to flop/yellow": "Majani yanaanza kulala/kuwa njano",
+  "About half tops fallen": "Nusu ya majani yameanguka",
+  "Most tops fallen and dry": "Majani mengi yameanguka na kukauka",
+  "Not dry yet, necks soft/open": "Bado hazijakauka, shingo laini/wazi",
+  "Papery skins forming": "Maganda kama karatasi yanaanza kuunda",
+  "Neck closed and feels soft when rubbed": "Shingo imelegea na imejifunga",
+  "Fully cured, papery, dry, last leaf dried": "Zimekauka kabisa, maganda kama karatasi, jani la mwisho limekauka",
+  "No burn observed": "Hakuna uharibifu wa jua ulioonekana",
+  "Mild scorch seen": "Uharibifu mdogo wa jua umeonekana",
+  "Shade erected": "Kivuli kimewekwa",
+  "Shade partially removed": "Kivuli kimeondolewa kiasi",
+  "Shade fully removed": "Kivuli kimeondolewa kabisa",
+  "Insecticide": "Dawa ya wadudu", "Fungicide": "Dawa ya ukungu", "Herbicide": "Dawa ya magugu",
+  "Foliar / liquid fertilizer": "Mbolea ya majani / ya maji",
+  "Compost / manure": "Mboji / samadi",
+  "Stored": "Imehifadhiwa", "Sold": "Imeuzwa"
+};
+function optionLabel(value){
+  if(currentLang === "sw" && OPTION_LABELS_SW[value] != null) return OPTION_LABELS_SW[value];
+  return value;
+}
+
 function categoryMeta(id){
   return CATEGORIES.find(function(c){ return c.id === id; }) || { id:id, label:id, kind:"attention" };
 }
-function categoryLabel(id){ return categoryMeta(id).label; }
+// Display-only Swahili labels for each activity category — the underlying category id (used by
+// the engine, storage, and history) never changes, only what's shown on screen.
+const CATEGORY_LABELS_SW = {
+  nursery: "Kuandaa kitalu", sowing: "Kupanda mbegu", emergence: "Mbegu zimeota",
+  land_prep: "Kuandaa shamba", transplanting: "Kuhamisha miche", fertilizer: "Kuweka mbolea",
+  spray: "Kunyunyizia dawa", weeding: "Kupalilia", mulch: "Kuweka/kuondoa matandazo",
+  irrigation: "Kumwagilia", harvest: "Kuvuna", stored_sold: "Imehifadhiwa / Imeuzwa", custom: "Nyingine"
+};
+function categoryLabel(id){
+  if(currentLang === "sw" && CATEGORY_LABELS_SW[id]) return CATEGORY_LABELS_SW[id];
+  return categoryMeta(id).label;
+}
 
 function seedData(){
   return {
@@ -507,7 +840,14 @@ function computeShapeArea(shape, dims){
   }
   return null;
 }
-function shapeLabel(shape){ const m = BED_SHAPES.find(function(s){ return s.id === shape; }); return m ? m.label : shape; }
+const SHAPE_LABELS_SW = {
+  rectangle: "Mstatili", trapezoid: "Trapezia",
+  right_triangle: "Pembetatu ya pembe ya nyuzi 90", acute_triangle: "Pembetatu yenye pembe zote chini ya nyuzi 90"
+};
+function shapeLabel(shape){
+  if(currentLang === "sw" && SHAPE_LABELS_SW[shape]) return SHAPE_LABELS_SW[shape];
+  const m = BED_SHAPES.find(function(s){ return s.id === shape; }); return m ? m.label : shape;
+}
 function plantsPerM2(rowCm, plantCm){ if(!(rowCm > 0) || !(plantCm > 0)) return null; return 10000 / (rowCm * plantCm); }
 function bedDimsSummary(shape, dims){
   if(shape === "rectangle") return dims.length + "m × " + dims.width + "m";
@@ -519,12 +859,15 @@ function bedDimsSummary(shape, dims){
 
 function urgencyClass(days){ if(days >= 30) return "danger"; if(days >= 14) return "warn"; return "ok"; }
 function urgencyColorVar(days){ if(days >= 30) return "var(--status-danger)"; if(days >= 14) return "var(--status-warning)"; return "var(--status-success)"; }
-function ordinalLabel(n){ if(n===1) return "1st"; if(n===2) return "2nd"; if(n===3) return "3rd"; return n+"th"; }
+function ordinalLabel(n){
+  if(currentLang === "sw") return "ya " + n;
+  if(n===1) return "1st"; if(n===2) return "2nd"; if(n===3) return "3rd"; return n+"th";
+}
 function relativeLabel(days){
-  if(days === 0) return "Today";
-  if(days === 1) return "Yesterday";
-  if(days < 0) return "Upcoming";
-  return days + " days ago";
+  if(days === 0) return t("time.today");
+  if(days === 1) return t("time.yesterday");
+  if(days < 0) return t("time.upcoming");
+  return days + " " + t("time.daysAgo");
 }
 
 function withOrdinals(events){
@@ -575,19 +918,19 @@ function transplantDatRange(ev){
 function eventDisplayName(ev){
   const cat = categoryMeta(ev.categoryId);
   if(ev.categoryId === "transplanting" && transplantSpanDays(ev)){
-    return "Transplanting completed over " + transplantSpanDays(ev) + " days (" + formatDateDisplay(ev.date) + "\u2013" + formatDateDisplay(ev.endDate) + ")";
+    return t("ev.transplantCompletedOver") + " " + transplantSpanDays(ev) + " " + t("ev.days") + " (" + formatDateDisplay(ev.date) + "\u2013" + formatDateDisplay(ev.endDate) + ")";
   }
-  if(ev.categoryId === "spray") return "Spraying (" + (ev.sprayType || "Insecticide") + ")";
-  if(ev.categoryId === "fertilizer" && ev.fertilizerType) return "Fertilizer application (" + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "") + ")";
+  if(ev.categoryId === "spray") return t("ev.spraying") + " (" + optionLabel(ev.sprayType || "Insecticide") + ")";
+  if(ev.categoryId === "fertilizer" && ev.fertilizerType) return t("ev.fertilizerApplication") + " (" + optionLabel(ev.fertilizerType) + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "") + ")";
   if(ev.categoryId === "stored_sold"){
     const outcome = ev.outcome || "Stored";
-    let text = outcome;
+    let text = optionLabel(outcome);
     if(ev.quantityGunia) text += " (" + ev.quantityGunia + " gunia)";
     if(outcome === "Sold" && ev.priceTsh) text += ", Tsh " + Number(ev.priceTsh).toLocaleString();
     return text;
   }
   if(ev.label) return ev.label;
-  return cat.label;
+  return categoryLabel(cat.id);
 }
 
 // Imperative phrasing for the Next Action cards: "what to do", not "what was logged".
@@ -599,6 +942,18 @@ const ACTION_VERB = {
   irrigation: "Water the crop",
   custom: "Custom activity"
 };
+const ACTION_VERB_SW = {
+  fertilizer: "Weka mbolea",
+  spray: "Nyunyizia dawa",
+  weeding: "Palilia shamba",
+  mulch: "Angalia matandazo",
+  irrigation: "Mwagilia zao",
+  custom: "Shughuli binafsi"
+};
+function actionVerb(catId){
+  if(currentLang === "sw" && ACTION_VERB_SW[catId]) return ACTION_VERB_SW[catId];
+  return ACTION_VERB[catId];
+}
 // Short, sourced explanation shown on the Why screen for each routine action, grounded in the
 // onion knowledge database rather than a generic guess. Kept deliberately brief; the timing is
 // advisory context, not a rule the app enforces on its own.
@@ -624,24 +979,51 @@ const ACTION_GUIDANCE = {
   mulch: { text: "Helps conserve moisture and suppress weeds early on, but is best removed once bulbing starts so it doesn't interfere with bulb enlargement.", sourceKeys: ["G7"] },
   custom: { text: "No specific guideline for a custom activity. This is whatever you've defined it to be.", sourceKeys: [] }
 };
-// Resolves a possibly phase-split ACTION_GUIDANCE entry down to a single {text, sourceKeys}
-// for the current phase. Falls back sensibly if a phase-specific variant isn't defined.
-function guidanceFor(catId, heroPhase){
-  const g = ACTION_GUIDANCE[catId];
-  if(!g) return { text:"", sourceKeys:[] };
-  if(g.germination || g.growing){
+// Swahili translations of ACTION_GUIDANCE, keyed the same way as the English object above.
+const ACTION_GUIDANCE_SW = {
+  fertilizer: {
+    germination: "Kwenye kitalu, mbolea kwa kawaida huwekwa mara moja tu wakati wa kuandaa tuta, kwa mfano gramu 20 za DAP kwa kila mita ya mraba, au samadi iliyooza vizuri — si kazi ya kurudiwa katika wiki za kitalu. Ratiba ya kugawa mbolea siku ya 30/45 huanza tu baada ya miche kuhamishwa. Mara tu mbegu zikiwa zimeota, DAP, Urea, na CAN havipaswi kuwekwa karibu nazo kabisa, vinaweza kuchoma au kukausha mizizi michanga. Mboji, samadi, au mbolea nyepesi ya maji baada ya majani halisi kutokea ndiyo chaguo salama wakati huo.",
+    growing: "Kwa kawaida hugawanywa katika mara mbili, karibu siku ya 30 na 45 baada ya kuhamisha miche, kisha kusimamishwa angalau wiki 4 kabla ya kuvuna. Nyingi mno, kwa kuchelewa, huwa inasababisha shingo nene na uhifadhi mbaya."
+  },
+  spray: "Ni bora kufanya kwa kuangalia na kujibu badala ya ratiba maalum. Kukagua kila wiki kwa thrips (mdudu mkuu eneo hili) ni ya kuaminika zaidi kuliko tarehe ya kalenda, kwenye kitalu kama vile baada ya kuhamisha miche.",
+  weeding: {
+    germination: "Endelea kupalilia tuta la kitalu kwa mkono katika wiki zote za kitalu, miche midogo iko hatarini zaidi kwa ushindani wakati bado ni midogo na mizizi haijaingia ndani.",
+    growing: "Vitunguu havishindani vizuri na magugu kwa sababu ya mizizi yao mifupi na ukuaji wa wima. Kuendelea kuangalia hili ni muhimu zaidi mapema msimu, kabla majani hayajafunika vizuri."
+  },
+  irrigation: {
+    germination: "Kidogo na mara kwa mara, epuka maji kujaa, hiki ndicho kipindi ambacho hatari ya kuoza kwa miche mchanga iko juu zaidi.",
+    growing: "Kidogo na mara kwa mara mapema, zaidi sana wakati wa kutengeneza balbu (kipindi kinachohitaji maji zaidi), kisha kupunguzwa na kusimamishwa wiki 2-4 kabla ya kuvuna."
+  },
+  mulch: "Husaidia kuhifadhi unyevu na kuzuia magugu mapema, lakini ni bora kuondolewa mara balbu inapoanza kutengenezeka ili isiathiri ukuaji wa balbu.",
+  custom: "Hakuna muongozo maalum kwa shughuli hii binafsi. Hii ni chochote ulichokijaza."
+};
+function guidanceForSw(catId, heroPhase){
+  const g = ACTION_GUIDANCE_SW[catId];
+  if(!g) return null;
+  if(typeof g === "object" && (g.germination || g.growing)){
     if(heroPhase === "germination" && g.germination) return g.germination;
     return g.growing || g.germination;
   }
   return g;
 }
-function nextActionTitle(ev){
-  if(ev.categoryId === "fertilizer"){
-    const detail = ev.fertilizerType ? (" (" + ev.fertilizerType + (ev.quantityKg ? ", " + ev.quantityKg + "kg" : "") + ")") : "";
-    return "Apply fertilizer" + detail;
+// Resolves a possibly phase-split ACTION_GUIDANCE entry down to a single {text, sourceKeys}
+// for the current phase. Falls back sensibly if a phase-specific variant isn't defined.
+function guidanceFor(catId, heroPhase){
+  const g = ACTION_GUIDANCE[catId];
+  if(!g) return { text:"", sourceKeys:[] };
+  const swText = currentLang === "sw" ? guidanceForSw(catId, heroPhase) : null;
+  if(g.germination || g.growing){
+    const chosen = (heroPhase === "germination" && g.germination) ? g.germination : (g.growing || g.germination);
+    return swText ? { text: swText, sourceKeys: chosen.sourceKeys } : chosen;
   }
-  if(ev.categoryId === "spray") return "Spray (" + (ev.sprayType || "Insecticide") + ")";
-  return ACTION_VERB[ev.categoryId] || eventDisplayName(ev);
+  return swText ? { text: swText, sourceKeys: g.sourceKeys } : g;
+}
+// Deliberately just the category verb, no product/quantity — showing the exact last-applied
+// dose here would read as an instruction to repeat it, when it's really just mirroring history.
+// The actual product/dose a farmer logged is still visible in History and the routine-action
+// detail on Why; this title is only ever "what kind of thing", never "how much of what".
+function nextActionTitle(ev){
+  return ACTION_VERB[ev.categoryId] ? actionVerb(ev.categoryId) : (currentLang === "sw" ? categoryLabel(ev.categoryId) : eventDisplayName(ev));
 }
 
 function RingGauge(props){
@@ -666,7 +1048,9 @@ function TopAttentionCard(props){
     e(RingGauge, { days: days }),
     e("div", { className:"ev-mid" },
       e("div", { className:"ev-name" }, nextActionTitle(ev)),
-      e("div", { className:"ev-sub" }, ordinalLabel(ev._ordinal) + " time · last done " + relativeLabel(days)),
+      e("div", { className:"ev-sub" }, currentLang === "sw"
+        ? (t("why.timesWord") + " " + ordinalLabel(ev._ordinal) + " · " + t("why.lastDoneShort") + " " + relativeLabel(days))
+        : (ordinalLabel(ev._ordinal) + " " + t("why.timeWord") + " · " + t("why.lastDoneShort") + " " + relativeLabel(days))),
       ev.observation ? e("div", { className:"ev-obs" }, "“" + ev.observation + "”") : null
     )
   );
@@ -701,6 +1085,24 @@ function stageForTransplantDays(days){
 }
 // Phase 3 (harvest → stored/sold): one constant label, ends when Stored/Sold is logged.
 const DRYING_LABEL = "Curing / drying";
+// Display-only Swahili for the growth-stage labels above (from the user-supplied glossary —
+// see /areas/onion-engine-sw-glossary.md). The English strings above remain the actual values
+// used internally (matched against BASELINE_CHECKS.onlySubStage, THREAT_RULES.stages, etc.),
+// so this is purely what's shown on screen.
+const STAGE_LABELS_SW = {
+  "Germination & establishment": "Mbegu zinaota na miche inaanza kukua",
+  "Vegetative growth": "Majani yanaendelea kukua",
+  "Bulb development": "Balbu inaanza kutengenezeka",
+  "Maturation": "Kitunguu kinaanza kukomaa",
+  "Ready for harvest check": "Kagua kama tayari kwa mavuno",
+  "Late, check if harvest was missed": "Umechelewa, kagua kama mavuno yamepitwa",
+  "Curing / drying": "Kukausha baada ya kuvuna",
+  "Season complete": "Msimu umekamilika"
+};
+function stageLabelDisplay(englishLabel){
+  if(currentLang === "sw" && STAGE_LABELS_SW[englishLabel]) return STAGE_LABELS_SW[englishLabel];
+  return englishLabel;
+}
 
 // ---- Observation-comparison engine ----
 // This is deliberately NOT free-text parsing. Every criterion below is checked against a
@@ -788,6 +1190,54 @@ const BASELINE_CHECKS = {
   }
 };
 
+// Swahili translations of BASELINE_CHECKS, keyed by checkKey — same pattern as THREAT_RULES_SW.
+// Criteria field labels reuse the same wording as the Observation form; expectedText re-uses
+// OPTION_LABELS_SW so a quoted status here always matches what the farmer actually picks in
+// the dropdown.
+const BASELINE_CHECKS_SW = {
+  readyToTransplant: {
+    label: "Dalili kuwa huenda uko tayari kuhamisha miche",
+    actionHint: "Weka kumbukumbu ya Kuhamisha miche mara utakapokuwa umeshahamisha miche shambani.",
+    sourceNote: "Kwa kawaida miche huhamishwa wiki 6-8 baada ya kupanda, ikiwa na urefu wa sm 8-12 na msingi mnene kama penseli na majani 3-5.",
+    criteria: {
+      leafCount: { fieldLabel: "Idadi ya majani", expectedText: "majani 3-5" },
+      heightCm: { fieldLabel: "Urefu wa mmea", expectedText: "urefu wa sm 8-12" }
+    }
+  },
+  bulbingStarted: {
+    label: "Dalili kuwa huenda balbu inaanza kutengenezeka",
+    actionHint: "Hakuna kumbukumbu ya kuweka bado, huu ni ujumbe tu wa taarifa. Programu itahamia Balbu inaanza kutengenezeka yenyewe mara siku za kutosha zitakapopita, au mapema zaidi kama uchunguzi wako utathibitisha hivyo.",
+    sourceNote: "Msingi/shingo kwa kawaida huanza kuvimba karibu wiki 4 baada ya kuhamisha miche.",
+    criteria: {
+      leafCount: { fieldLabel: "Idadi ya majani", expectedText: "majani 5 au zaidi" },
+      topsStatus: { fieldLabel: "Hali ya majani / balbu", expectedText: "angalau \u201cChini ya mmea inaanza kuvimba\u201d" }
+    }
+  },
+  maturationStarted: {
+    label: "Dalili kuwa huenda kukomaa kunaanza",
+    actionHint: "Hakuna kumbukumbu ya kuweka bado, huu ni ujumbe tu wa taarifa. Programu itahamia Kitunguu kinaanza kukomaa yenyewe mara siku za kutosha zitakapopita, au mapema zaidi kama uchunguzi wako utathibitisha hivyo.",
+    sourceNote: "Kukomaa huanza wakati majani yanapoanza kulala na kuwa njano, ikionyesha kuwa balbu imesimamisha kukua na inaanza kumalizika.",
+    criteria: {
+      topsStatus: { fieldLabel: "Hali ya majani / balbu", expectedText: "angalau \u201cMajani yanaanza kulala/kuwa njano\u201d" }
+    }
+  },
+  harvestReady: {
+    label: "Dalili kuwa huenda uko tayari kuvuna",
+    actionHint: "Weka kumbukumbu ya Kuvuna mara utakapokuwa umeshavuna zao.",
+    sourceNote: "Ukomavu wa daraja la kuhifadhi hufikiwa baada ya asilimia 75-85 ya majani kulala na kukauka.",
+    criteria: {
+      topsStatus: { fieldLabel: "Hali ya majani / balbu", expectedText: "angalau \u201cMajani mengi yameanguka na kukauka\u201d" }
+    }
+  },
+  curingComplete: {
+    label: "Dalili kuwa huenda ukaushaji umekamilika",
+    actionHint: "Hakuna kumbukumbu ya kuweka bado kwa hatua hii. Mara utakapoweka vitunguu kwenye uhifadhi au kuviuza, weka kumbukumbu ya Imehifadhiwa/Imeuzwa kufunga msimu.",
+    sourceNote: "Ukaushaji unahesabika umekamilika wakati maganda ya nje yamekauka kama karatasi kwa rangi ya kawaida ya aina hiyo, shingo imefungwa bila tundu kubwa na inahisi laini ikisuguliwa kati ya kidole gumba na kidole cha shahada, na jani la mwisho (kavu) limekauka kabisa.",
+    criteria: {
+      curingStatus: { fieldLabel: "Hali ya kukausha / shingo", expectedText: "angalau \u201cShingo imelegea na imejifunga\u201d" }
+    }
+  }
+};
 // Picks the one check relevant to the current phase/sub-stage, evaluates it against the most
 // recent Observation, and returns everything the "Why" screen needs to explain itself. Never
 // changes the logged-event phase — advisory only, per design decision.
@@ -804,6 +1254,7 @@ function evaluateBaselineCheck(heroPhase, subStageLabel, observations, seasonAnc
   });
   if(!checkKey) return null;
   const check = BASELINE_CHECKS[checkKey];
+  const swCheck = currentLang === "sw" ? BASELINE_CHECKS_SW[checkKey] : null;
 
   // Only consider observations logged this season — otherwise a leftover observation from a
   // previous (or pre-season) cycle can be picked up as "the latest" and used to justify advice
@@ -815,7 +1266,13 @@ function evaluateBaselineCheck(heroPhase, subStageLabel, observations, seasonAnc
   const results = check.criteria.map(function(c){
     const outcome = latest ? c.test(latest) : null; // true=match, false=not yet, null=not recorded
     const observedValue = latest ? c.getValue(latest) : null;
-    return { fieldLabel: c.fieldLabel, expectedText: c.expectedText, outcome: outcome, observedValue: observedValue };
+    const swCriterion = swCheck ? swCheck.criteria[c.key] : null;
+    return {
+      fieldLabel: swCriterion ? swCriterion.fieldLabel : c.fieldLabel,
+      expectedText: swCriterion ? swCriterion.expectedText : c.expectedText,
+      outcome: outcome,
+      observedValue: currentLang === "sw" && observedValue != null ? optionLabel(observedValue) : observedValue
+    };
   });
   const provided = results.filter(function(r){ return r.outcome !== null; });
   let overall;
@@ -825,8 +1282,8 @@ function evaluateBaselineCheck(heroPhase, subStageLabel, observations, seasonAnc
   else overall = "none";
 
   return {
-    checkKey: checkKey, label: check.label, actionHint: check.actionHint,
-    sourceKeys: check.sourceKeys, sourceNote: check.sourceNote,
+    checkKey: checkKey, label: swCheck ? swCheck.label : check.label, actionHint: swCheck ? swCheck.actionHint : check.actionHint,
+    sourceKeys: check.sourceKeys, sourceNote: swCheck ? swCheck.sourceNote : check.sourceNote,
     results: results, overall: overall,
     observationDate: latest ? latest.date : null
   };
@@ -851,14 +1308,24 @@ const ONE_TIME_ACTIONS = {
   }
 };
 
+// Swahili translation of ONE_TIME_ACTIONS, keyed the same way — same pattern as THREAT_RULES_SW.
+const ONE_TIME_ACTIONS_SW = {
+  removeNurseryMulch: {
+    label: "Ondoa matandazo ya kitalu",
+    guidance: "Ondoa matandazo au kifuniko mara tu miche inapoota kweli, si kwa idadi maalum ya siku. Vyanzo vingi vya kanda hii vinakubaliana na kigezo hiki bila kujali muda uliochukua kuota.",
+    avoid: "Usiache matandazo baada ya miche kuota; yanazuia mwanga na yanaweza kudhoofisha au kuchoma miche. Pia usiondoe kabla ya kuota, udongo ulio wazi unaweka mbegu hatarini kwa ndege, ukavu, na mabadiliko ya joto kabla miche haijaota kikamilifu."
+  }
+};
 // Evaluates one specific one-time action against the farmer's own logged events (never a
 // calendar assumption). Returns null if it doesn't apply to the current phase at all.
 function evaluateOneTimeAction(actionKey, heroPhase, events, seasonAnchorDate){
   const action = ONE_TIME_ACTIONS[actionKey];
   if(!action || action.appliesWhenPhase !== heroPhase) return null;
+  const sw = currentLang === "sw" ? ONE_TIME_ACTIONS_SW[actionKey] : null;
+  const displayAction = sw ? Object.assign({}, action, sw) : action;
   const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
   const triggers = events.filter(function(ev){ return ev.categoryId === action.triggerCategory && inSeason(ev); });
-  if(triggers.length === 0) return { key: actionKey, action: action, status: "not-yet-triggered", triggerEvent: null, doneEvent: null };
+  if(triggers.length === 0) return { key: actionKey, action: displayAction, status: "not-yet-triggered", triggerEvent: null, doneEvent: null };
   const triggerEvent = triggers.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop();
   // Use the season anchor (not the exact trigger date) as the cutoff: the real question is
   // "did this done-action happen this season?", not "did it happen after this specific trigger
@@ -868,7 +1335,7 @@ function evaluateOneTimeAction(actionKey, heroPhase, events, seasonAnchorDate){
   const doneSince = seasonAnchorDate || triggerEvent.date;
   const doneMatches = events.filter(function(ev){ return ev.categoryId === action.doneCategory && ev.date >= doneSince; });
   const doneEvent = doneMatches.length ? doneMatches.slice().sort(function(a,b){ return a.date.localeCompare(b.date); }).pop() : null;
-  return { key: actionKey, action: action, status: doneEvent ? "done" : "due", triggerEvent: triggerEvent, doneEvent: doneEvent };
+  return { key: actionKey, action: displayAction, status: doneEvent ? "done" : "due", triggerEvent: triggerEvent, doneEvent: doneEvent };
 }
 
 // ---- Sunlight / shade actions ----
@@ -895,16 +1362,31 @@ const SUNLIGHT_ACTIONS = {
   }
 };
 
+// Swahili translation of SUNLIGHT_ACTIONS, keyed the same way — same pattern as THREAT_RULES_SW.
+const SUNLIGHT_ACTIONS_SW = {
+  erectShade: {
+    label: "Weka kivuli kilichoinuliwa juu ya tuta la kitalu",
+    guidance: "Mara miche inapoanza kuonyesha uharibifu wa jua baada ya kuondoa matandazo, desturi ya kanda hii ni kuweka kivuli kilichoinuliwa badala ya kurudisha matandazo moja kwa moja. Muongozo mmoja wa jumla wa vitalu vya mboga unashauri karibu mita 1 juu ya tuta, kimo cha kutosha hewa kupita chini, kisichogusa miche.",
+    avoid: "Usirudishe matandazo moja kwa moja juu ya miche, hilo linazuia mwanga tena na linaharibu lengo la kuyaondoa. Pia usijenge kivuli chini sana, kinahitaji hewa ipite chini yake."
+  },
+  removeShadeGradually: {
+    label: "Anza kuondoa kivuli taratibu",
+    guidance: "Muongozo wa jumla wa vitalu unashauri kupunguza kivuli taratibu kwa muda wa siku 10 hivi badala ya kukiondoa mara moja, hakuna idadi maalum ya siku kwa vitunguu iliyopatikana kwenye vyanzo vilivyoangaliwa, hivyo chukua siku 10 kama mwanzo tu, si kanuni thabiti. Kutokana na ulichokiona kwenye shamba lako mwenyewe, lenga kukiondoa kabisa kabla ya wiki 3.",
+    avoid: "Usiache kivuli kwa wiki nyingi, miche inayobaki kwenye kivuli muda mrefu sana inarefuka na kuwa nyembamba ikitafuta mwanga, kisha inashtuka pale kivuli kinapoondolewa mwishoni, jambo linalolingana na ulichoona msimu uliopita."
+  }
+};
 function evaluateSunlightAction(actionKey, heroPhase, observations, seasonAnchorDate){
   const action = SUNLIGHT_ACTIONS[actionKey];
   if(!action || action.appliesWhenPhase !== heroPhase) return null;
+  const sw = currentLang === "sw" ? SUNLIGHT_ACTIONS_SW[actionKey] : null;
+  const displayAction = sw ? Object.assign({}, action, sw) : action;
   const inSeason = function(o){ return !seasonAnchorDate || o.date >= seasonAnchorDate; };
   const withField = (observations || []).filter(function(o){ return o.sunlightEffect && inSeason(o); }).sort(function(a,b){ return a.date.localeCompare(b.date); });
   if(withField.length === 0) return null;
   const latest = withField[withField.length - 1];
   if(actionKey === "erectShade"){
     if(latest.sunlightEffect !== "Mild scorch seen") return null;
-    return { key: actionKey, action: action, status: "due", triggerEvent: latest };
+    return { key: actionKey, action: displayAction, status: "due", triggerEvent: latest };
   }
   if(actionKey === "removeShadeGradually"){
     // Track this as a small state machine over the whole season's observations, not just the
@@ -918,7 +1400,7 @@ function evaluateSunlightAction(actionKey, heroPhase, observations, seasonAnchor
     const lastErected = erectedEvents[erectedEvents.length - 1];
     const resolvedAfter = withField.some(function(o){ return o.date > lastErected.date && obsSunlightIndex(o.sunlightEffect) >= obsSunlightIndex("Shade partially removed"); });
     if(resolvedAfter) return null;
-    return { key: actionKey, action: action, status: "due", triggerEvent: lastErected };
+    return { key: actionKey, action: displayAction, status: "due", triggerEvent: lastErected };
   }
   return null;
 }
@@ -998,6 +1480,46 @@ const THREAT_RULES = [
   }
 ];
 
+// Swahili translations of THREAT_RULES, keyed by rule id — the English THREAT_RULES array above
+// remains the single source of truth for matching logic (symptom groups, stage lists); this is
+// purely what's displayed once a rule has already matched. Disease names/symptom wording drawn
+// from the user-supplied glossary (/areas/onion-engine-sw-glossary.md); message/avoid text is a
+// plain-language rendering of the same sourced guidance as the English version, not a literal
+// word-for-word translation.
+const THREAT_RULES_SW = {
+  thrips: {
+    label: "Thrips",
+    message: "Thrips ndio mdudu mkuu anayeshambulia vitunguu eneo hili, na wakati mbaya anaweza kupunguza mavuno kwa hadi asilimia 60. Kagua shamba kila wiki na tumia mafuta ya mwarobaini au dawa ya wadudu iliyoidhinishwa.",
+    avoid: "Usisubiri mpaka mashambulizi yawe makubwa kabla ya kuchukua hatua — uharibifu wa thrips pia unafungua mlango kwa maambukizi mengine."
+  },
+  purple_blotch: {
+    label: "Madoa ya zambarau",
+    message: "Ugonjwa huu unaweza kutokea kwenye joto la aina mbalimbali lakini unaenea haraka zaidi kwenye hali ya unyevu. Boresha mzunguko wa hewa kati ya mimea na epuka kumwagilia juu ya majani.",
+    avoid: "Usiache mabaki ya mimea iliyoathirika shambani baada ya kuvuna, ni chanzo cha maambukizi zaidi. Hakuna tiba nzuri ya asili baada ya dalili kuonekana, hivyo kuzuia (nafasi kati ya mimea, mifereji ya maji, mzunguko wa mazao) ndiyo jambo muhimu zaidi."
+  },
+  leaf_blight: {
+    label: "Ugonjwa wa majani",
+    message: "Huu ni ugonjwa wa majani unaopendelea hali ya joto (nyuzi 16-28°C). Ondoa mabaki ya vitunguu yaliyoathirika na mimea inayoota yenyewe, na epuka kumwagilia majani kupita kiasi.",
+    avoid: "Usiweke mbolea ya nitrojeni kupita kiasi, inachochea ukuaji mnene ambao ugonjwa huu unaupenda."
+  },
+  downy_mildew: {
+    label: "Ugonjwa wa ukungu",
+    message: "Unapendelea usiku wenye ubaridi na unyevu mwingi wenye majani yenye maji asubuhi. Boresha mzunguko wa hewa na epuka kumwagilia juu ya majani, hasa jioni.",
+    avoid: "Hakuna dawa nzuri ya asili iliyothibitika kwa ugonjwa huu baada ya kuonekana — kuzuia ni muhimu zaidi kuliko kutafuta tiba."
+  },
+  neck_rot: {
+    label: "Kuoza kwa shingo",
+    message: "Huu ni ugonjwa wa uhifadhi hasa, uharibifu mara nyingi hauonekani mpaka baada ya wiki kadhaa kwenye uhifadhi, si lazima sasa hivi. Vuna tu baada ya shingo kulala yenyewe, epuka kuvuna wakati wa mvua, na kausha vitunguu vizuri na haraka.",
+    avoid: "Usihifadhi kitunguu chochote chenye shingo laini pamoja na vizuri, kitenganishe kwanza."
+  }
+};
+function threatDisplay(rule){
+  if(currentLang === "sw" && THREAT_RULES_SW[rule.id]){
+    const sw = THREAT_RULES_SW[rule.id];
+    return { label: sw.label, message: sw.message, avoid: sw.avoid };
+  }
+  return { label: rule.label, message: rule.message, avoid: rule.avoid };
+}
 // Evaluates every threat rule against the most recent in-season observation. Only runs during
 // the growing/drying phases, since these are field/harvest-stage diseases, not nursery ones.
 function evaluateThreatMap(heroPhase, heroStageLabel, observations, seasonAnchorDate){
@@ -1009,7 +1531,8 @@ function evaluateThreatMap(heroPhase, heroStageLabel, observations, seasonAnchor
   return THREAT_RULES.filter(function(rule){
     return rule.stages.indexOf(heroStageLabel) !== -1 && rule.match(latest);
   }).map(function(rule){
-    return { id: rule.id, label: rule.label, severity: rule.severity, message: rule.message, avoid: rule.avoid, sourceKeys: rule.sourceKeys, observationDate: latest.date };
+    const d = threatDisplay(rule);
+    return { id: rule.id, label: d.label, severity: rule.severity, message: d.message, avoid: d.avoid, sourceKeys: rule.sourceKeys, observationDate: latest.date };
   });
 }
 
@@ -1055,6 +1578,19 @@ const GUARDRAILS = [
   }
 ];
 
+// Swahili translations of GUARDRAILS, keyed by rule id — same pattern as THREAT_RULES_SW above.
+const GUARDRAILS_SW = {
+  fertilizer_too_late: {
+    label: "Mbolea iliwekwa baadaye kuliko wakati unaoshauriwa",
+    message: "Muongozo unashauri kugawa mbolea karibu siku 30 na 45 baada ya kuhamisha miche, kisha kusimamisha angalau wiki 4 kabla ya kuvuna. Uwekaji huu unaonekana ni baadaye ya muda huo.",
+    avoid: "Nitrojeni nyingi wakati wa mwisho huwa inasababisha shingo nene na uhifadhi mbaya badala ya mavuno zaidi katika kipindi hiki cha msimu."
+  },
+  irrigation_too_close_to_harvest: {
+    label: "Kumwagilia kuliwekwa karibu na wakati wa mavuno",
+    message: "Muongozo unashauri kupunguza na kusimamisha kumwagilia wiki 2-4 kabla ya kuvuna. Kumwagilia huku kuliwekwa chini ya wiki 2 kabla ya tarehe ya mavuno.",
+    avoid: "Kumwagilia karibu sana na mavuno kunaweza kuathiri ukaushaji na ubora wa uhifadhi."
+  }
+};
 function evaluateGuardrails(events, seasonAnchorDate, transplantEvent, harvestEvent){
   const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
   const ctx = { transplantEvent: transplantEvent, harvestEvent: harvestEvent };
@@ -1062,7 +1598,8 @@ function evaluateGuardrails(events, seasonAnchorDate, transplantEvent, harvestEv
   GUARDRAILS.forEach(function(rule){
     events.filter(function(ev){ return ev.categoryId === rule.categoryId && inSeason(ev); }).forEach(function(ev){
       if(rule.check(ev, ctx)){
-        flags.push({ id: rule.id, label: rule.label, severity: rule.severity, message: rule.message, avoid: rule.avoid, sourceKeys: rule.sourceKeys, eventDate: ev.date });
+        const sw = currentLang === "sw" ? GUARDRAILS_SW[rule.id] : null;
+        flags.push({ id: rule.id, label: sw ? sw.label : rule.label, severity: rule.severity, message: sw ? sw.message : rule.message, avoid: sw ? sw.avoid : rule.avoid, sourceKeys: rule.sourceKeys, eventDate: ev.date });
       }
     });
   });
@@ -1098,19 +1635,25 @@ function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent){
   const fertEvents = events.filter(function(ev){ return ev.categoryId === "fertilizer" && ev.fertilizerType && inSeason(ev); })
     .sort(function(a,b){ return a.date.localeCompare(b.date); });
   const flags = [];
+  const sw = currentLang === "sw";
 
   fertEvents.forEach(function(ev){
     const profile = FERTILIZER_RISK_PROFILE[ev.fertilizerType];
+    const name = optionLabel(ev.fertilizerType);
     // A risky product logged after the sowing day itself (not same-day bed prep) means it was
     // most likely applied at or near already-germinating seedlings, not mixed into the bed
     // before anything was planted.
     if(profile && profile.riskyNearSeedlings && sowingEvent && ev.date > sowingEvent.date){
       flags.push({
         id: "fertilizer_unsafe_near_seedlings",
-        label: ev.fertilizerType + " applied near young seedlings",
+        label: sw ? (name + " iliwekwa karibu na miche michanga") : (ev.fertilizerType + " applied near young seedlings"),
         severity: "critical",
-        message: ev.fertilizerType + " releases ammonia and/or a strong salt effect close to seeds and roots, which can dehydrate or burn young seedlings. Compost, well-rotted manure, or a dilute liquid feed after true leaves appear are the safe nursery options.",
-        avoid: "Don't apply " + ev.fertilizerType + " directly to a nursery bed or close to seedling roots. If used at all, it belongs mixed into the soil well before sowing, several cm away from where the seed goes.",
+        message: sw
+          ? (name + " hutoa hewa ya amonia na/au chumvi kali karibu na mbegu na mizizi, jambo linaloweza kukausha au kuchoma miche michanga. Mboji, samadi iliyooza vizuri, au mbolea nyepesi ya maji baada ya majani halisi kutokea ndiyo chaguo salama kwenye kitalu.")
+          : (ev.fertilizerType + " releases ammonia and/or a strong salt effect close to seeds and roots, which can dehydrate or burn young seedlings. Compost, well-rotted manure, or a dilute liquid feed after true leaves appear are the safe nursery options."),
+        avoid: sw
+          ? ("Usiweke " + name + " moja kwa moja kwenye tuta la kitalu au karibu na mizizi ya miche. Ikitumika, iwe imechanganywa vizuri kwenye udongo muda mrefu kabla ya kupanda, umbali wa sentimita kadhaa kutoka mahali mbegu itakapowekwa.")
+          : ("Don't apply " + ev.fertilizerType + " directly to a nursery bed or close to seedling roots. If used at all, it belongs mixed into the soil well before sowing, several cm away from where the seed goes."),
         sourceKeys: ["MCN1", "FCN1"],
         eventDate: ev.date
       });
@@ -1121,12 +1664,17 @@ function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent){
     const prev = fertEvents[i-1], curr = fertEvents[i];
     const gapDays = daysBetween(prev.date, curr.date);
     if(gapDays != null && gapDays <= 7 && fertilizersIncompatible(prev.fertilizerType, curr.fertilizerType)){
+      const prevName = optionLabel(prev.fertilizerType), currName = optionLabel(curr.fertilizerType);
       flags.push({
         id: "fertilizer_incompatible_pair",
-        label: prev.fertilizerType + " and " + curr.fertilizerType + " applied close together",
+        label: sw ? (prevName + " na " + currName + " ziliwekwa karibu kwa muda") : (prev.fertilizerType + " and " + curr.fertilizerType + " applied close together"),
         severity: "high",
-        message: "Phosphate-based fertilizers (like DAP or NPK compounds) and calcium-based fertilizers (like CAN or calcium nitrate) react together to form calcium phosphate, which is insoluble and useless to the plant.",
-        avoid: "Space these out, or pick one or the other for a given application rather than combining them.",
+        message: sw
+          ? "Mbolea zenye fosifeti (kama DAP au aina za NPK) na mbolea zenye kalisi (kama CAN au calcium nitrate) zinapochanganyika hutengeneza calcium phosphate, ambayo haiyeyuki na haina faida kwa mmea."
+          : "Phosphate-based fertilizers (like DAP or NPK compounds) and calcium-based fertilizers (like CAN or calcium nitrate) react together to form calcium phosphate, which is insoluble and useless to the plant.",
+        avoid: sw
+          ? "Ziweke kwa nafasi ya muda, au chagua moja kati ya hizo kwa uwekaji mmoja badala ya kuzichanganya."
+          : "Space these out, or pick one or the other for a given application rather than combining them.",
         sourceKeys: ["PU1"],
         eventDate: curr.date
       });
@@ -1285,7 +1833,6 @@ function HomeScreen(state){
       .sort(function(a, b){ return daysSince(latestByCat[b].date) - daysSince(latestByCat[a].date); })
       .slice(0, 3);
   }, [latestByCat, heroPhase]);
-  const note = useMemo(function(){ return latestFieldNote(state); }, [state.events, state.observations]);
   const hasAnyEvents = state.events.length > 0;
   const engineCheck = useMemo(function(){ return evaluateBaselineCheck(heroPhase, heroStageLabel, state.observations, sowingEvent ? sowingEvent.date : null); }, [heroPhase, heroStageLabel, state.observations, sowingEvent]);
   const nurseryMulchAction = useMemo(function(){
@@ -1331,10 +1878,10 @@ function HomeScreen(state){
     e("div", { className:"header" },
       e("div", { className:"farmrow" },
         e("div", null,
-          e("div", { className:"farmname" }, state.farm.name || "My Farm"),
-          e("div", { className:"date" }, new Date().toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long" }))
+          e("div", { className:"farmname" }, state.farm.name || (currentLang === "sw" ? "Shamba Langu" : "My Farm")),
+          e("div", { className:"date" }, new Date().toLocaleDateString(currentLang === "sw" ? "sw" : "en-GB", { weekday:"long", day:"numeric", month:"long" }))
         ),
-        e("span", { className:"badge" }, state.farm.cropType === "onion" ? "Onion" : state.farm.cropType)
+        e("span", { className:"badge" }, state.farm.cropType === "onion" ? (currentLang === "sw" ? "Vitunguu" : "Onion") : state.farm.cropType)
       )
     ),
 
@@ -1346,19 +1893,21 @@ function HomeScreen(state){
         e("div", { className:"hero-ring-wrap" }, e(RingHero, { days: cropAge === null ? 0 : cropAge, complete: heroPhase === "complete" })),
         e("div", { className:"hero-text" },
           heroPhase === null
-            ? e("div", { className:"hero-sub" }, "Log a sowing date in Settings to start tracking.")
+            ? e("div", { className:"hero-sub" }, t("home.logSowingPrompt"))
             : heroPhase === "complete"
             ? e(React.Fragment, null,
                 e("div", { className:"hero-num mono" }, dispositionEvent.quantityGunia || "—"),
-                e("div", { className:"hero-label" }, (dispositionEvent.outcome === "Sold" ? "gunia sold" : "gunia stored")),
-                e("div", { className:"hero-sub" }, "Season complete · " + relativeLabel(daysSince(dispositionEvent.date)) + " · log a new sowing to start next season")
+                e("div", { className:"hero-label" }, (dispositionEvent.outcome === "Sold" ? t("home.guniaSold") : t("home.guniaStored"))),
+                e("div", { className:"hero-sub" }, t("home.seasonComplete") + " · " + relativeLabel(daysSince(dispositionEvent.date)) + " · " + (currentLang === "sw" ? "weka tarehe mpya ya kupanda kuanza msimu ujao" : "log a new sowing to start next season"))
               )
             : e(React.Fragment, null,
                 e("div", { className:"hero-num mono" }, cropAge),
-                e("div", { className:"hero-label" }, (cropAge === 1 ? "day since " : "days since ") + (heroPhase === "growing" ? "transplanting" : heroPhase === "drying" ? "harvest" : "sowing")),
-                e("div", { className:"hero-sub" }, heroStageLabel),
+                e("div", { className:"hero-label" }, (currentLang === "sw" ? "siku tangu " : (cropAge === 1 ? "day since " : "days since ")) + (currentLang === "sw"
+                  ? (heroPhase === "growing" ? "kuhamisha miche" : heroPhase === "drying" ? "kuvuna" : "kupanda")
+                  : (heroPhase === "growing" ? "transplanting" : heroPhase === "drying" ? "harvest" : "sowing"))),
+                e("div", { className:"hero-sub" }, stageLabelDisplay(heroStageLabel)),
                 transplantDatRange && e("div", { className:"hero-sub", style:{ opacity:0.75, marginTop:"2px" } },
-                  "Crop age varies by section: " + transplantDatRange.minDAT + "\u2013" + transplantDatRange.maxDAT + " DAT (transplanted over " + transplantDatRange.spanDays + " days)")
+                  (currentLang === "sw" ? "Umri wa zao unatofautiana kwa sehemu: " : "Crop age varies by section: ") + transplantDatRange.minDAT + "\u2013" + transplantDatRange.maxDAT + " DAT (" + (currentLang === "sw" ? "kuhamishwa kwa siku " + transplantDatRange.spanDays : "transplanted over " + transplantDatRange.spanDays + " days") + ")")
               )
         )
       ),
@@ -1370,7 +1919,7 @@ function HomeScreen(state){
         e("div", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("engine"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, engineCheck.label),
-            e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? "Your latest observation matches the guideline. Tap to see why." : "Getting close. Tap to see what's matched so far.")
+            e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? t("why.matchesFull") : t("why.matchesPartial"))
           ),
           e("span", { className:"chev" }, "›")
         ),
@@ -1381,7 +1930,7 @@ function HomeScreen(state){
         e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, nurseryMulchAction.action.label),
-            e("div", { className:"advisory-sub" }, "Seedlings emerged " + relativeLabel(daysSince(nurseryMulchAction.triggerEvent.date)) + ". Tap to see why.")
+            e("div", { className:"advisory-sub" }, t("why.seedlingsEmerged") + " " + relativeLabel(daysSince(nurseryMulchAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
           ),
           e("span", { className:"chev" }, "›")
         ),
@@ -1392,7 +1941,7 @@ function HomeScreen(state){
         e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-erectShade"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-erectShade"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, erectShadeAction.action.label),
-            e("div", { className:"advisory-sub" }, "Sun scorch logged " + relativeLabel(daysSince(erectShadeAction.triggerEvent.date)) + ". Tap to see why.")
+            e("div", { className:"advisory-sub" }, t("why.sunScorchLogged") + " " + relativeLabel(daysSince(erectShadeAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
           ),
           e("span", { className:"chev" }, "›")
         ),
@@ -1400,7 +1949,7 @@ function HomeScreen(state){
         e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeShadeGradually"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeShadeGradually"); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, removeShadeAction.action.label),
-            e("div", { className:"advisory-sub" }, "Shade erected " + relativeLabel(daysSince(removeShadeAction.triggerEvent.date)) + ". Tap to see why.")
+            e("div", { className:"advisory-sub" }, t("why.shadeErectedMeta") + " " + relativeLabel(daysSince(removeShadeAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
           ),
           e("span", { className:"chev" }, "›")
         ),
@@ -1408,11 +1957,11 @@ function HomeScreen(state){
       // Threat Map — pest/disease diagnosis from the latest logged symptom observation.
       // Filtered to visibleThreats: cards auto-hide after 24h or a new event/observation;
       // full detail always stays available on the Why page regardless.
-      visibleThreats.map(function(t){
-        return e("div", { key: t.id, className:"advisory-card threat-" + t.severity, onClick: function(){ state.onGoToWhy("threat-" + t.id); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("threat-" + t.id); }), role:"button", tabIndex:0 },
+      visibleThreats.map(function(threat){
+        return e("div", { key: threat.id, className:"advisory-card threat-" + threat.severity, onClick: function(){ state.onGoToWhy("threat-" + threat.id); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("threat-" + threat.id); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, t.label),
-            e("div", { className:"advisory-sub" }, "From your observation " + relativeLabel(daysSince(t.observationDate)) + ". Tap to see why.")
+            e("div", { className:"advisory-title" }, threat.label),
+            e("div", { className:"advisory-sub" }, t("why.fromObservationShort") + " " + relativeLabel(daysSince(threat.observationDate)) + ". " + t("why.tapToSeeWhy"))
           ),
           e("span", { className:"chev" }, "›")
         );
@@ -1424,7 +1973,7 @@ function HomeScreen(state){
         return e("div", { key: f.id + i, className:"advisory-card threat-" + f.severity, onClick: function(){ state.onGoToWhy("fertsafety-" + i); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertsafety-" + i); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, f.label),
-            e("div", { className:"advisory-sub" }, "Logged " + relativeLabel(daysSince(f.eventDate)) + ". Tap to see why.")
+            e("div", { className:"advisory-sub" }, t("why.logged2") + " " + relativeLabel(daysSince(f.eventDate)) + ". " + t("why.tapToSeeWhy"))
           ),
           e("span", { className:"chev" }, "›")
         );
@@ -1432,29 +1981,17 @@ function HomeScreen(state){
 
       // Farm area — only shown once beds have been added via Settings > Calculator > Area calculator.
       (state.areaBeds && state.areaBeds.length > 0) && e("div", { className:"calc-total", style:{ margin:"12px 16px 18px" } },
-        e("span", null, "Farm area"),
-        e("span", null, state.areaBeds.length + " plot" + (state.areaBeds.length===1?"":"s") + " · " + state.areaBeds.reduce(function(sum,b){ return sum+b.area; },0).toFixed(1) + " m²")
+        e("span", null, t("home.farmArea")),
+        e("span", null, state.areaBeds.length + " " + (currentLang === "sw" ? "maeneo" : ("plot" + (state.areaBeds.length===1?"":"s"))) + " · " + state.areaBeds.reduce(function(sum,b){ return sum+b.area; },0).toFixed(1) + " m²")
       ),
 
       // What must I do now? — up to three tracked activities, most important first.
-      e("div", { className:"section-label tight" }, "Next action"),
+      e("div", { className:"section-label tight" }, t("home.nextAction")),
       !hasAnyEvents || nextActionCats.length === 0
-        ? e("div", { className:"empty-state compact" }, e("div", null, "Add fertilizer, spraying, or weeding from Settings."))
+        ? e("div", { className:"empty-state compact" }, e("div", null, t("home.addToGetStarted")))
         : e("div", { className:"card-list tight" }, nextActionCats.map(function(catId){
             return e("div", { key: catId, className:"card-btn", onClick: function(){ state.onGoToWhy(catId); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy(catId); }), role:"button", tabIndex:0 }, e(TopAttentionCard, { ev: latestByCat[catId] }));
-          })),
-
-      // What changed recently? — the newest field note.
-      e("div", { className:"section-label tight" }, "Latest observation"),
-      !note
-        ? e("div", { className:"empty-state compact" }, e("div", null, "No observations logged yet."))
-        : e("div", { className:"obs-card" },
-            e(RingGauge, { days: daysSince(note.date), size:42, stroke:5 }),
-            e("div", { className:"ev-mid" },
-              e("div", { className:"obs-text" }, "“" + note.text + "”"),
-              e("div", { className:"ev-sub" }, note.source + " · " + relativeLabel(daysSince(note.date)))
-            )
-          )
+          }))
     )
   );
 }
@@ -1515,21 +2052,23 @@ function ActivityDetailSheet(props){
   const cat = props.cat, ev = props.ev, onClose = props.onClose, onEdit = props.onEdit, onDelete = props.onDelete, onQuickAdd = props.onQuickAdd;
   return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
     e("div", { className:"modal" },
-      e("h2", null, cat.label),
+      e("h2", null, categoryLabel(cat.id)),
       !ev
-        ? e("div", { className:"hint", style:{ marginBottom:"14px" } }, "Not logged yet.")
+        ? e("div", { className:"hint", style:{ marginBottom:"14px" } }, t("common.notLoggedYet"))
         : e("div", { style:{ marginBottom:"14px" } },
             e("div", { style:{ fontSize:"15px", fontWeight:700, marginBottom:"4px" } }, eventDisplayName(ev)),
-            e("div", { className:"hint" }, ordinalLabel(ev._ordinal) + " time · " + relativeLabel(daysSince(ev.date)) + " · " + formatDateDisplay(ev.date)),
+            e("div", { className:"hint" }, (currentLang === "sw"
+              ? (t("why.timesWord") + " " + ordinalLabel(ev._ordinal))
+              : (ordinalLabel(ev._ordinal) + " " + t("why.timeWord"))) + " · " + relativeLabel(daysSince(ev.date)) + " · " + formatDateDisplay(ev.date)),
             ev.observation && e("div", { className:"obs", style:{ marginTop:"8px" } }, "“" + ev.observation + "”")
           ),
       e("div", { className:"modal-actions" },
         ev
           ? e(React.Fragment, null,
-              e("button", { className:"btn btn-secondary", onClick: function(){ onEdit(ev); } }, "Edit"),
-              e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ onDelete(ev.id); } }, "Delete")
+              e("button", { className:"btn btn-secondary", onClick: function(){ onEdit(ev); } }, t("common.edit")),
+              e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ onDelete(ev.id); } }, t("common.delete"))
             )
-          : e("button", { className:"btn btn-primary", onClick: function(){ onQuickAdd(cat.id); } }, "+ Add " + cat.label)
+          : e("button", { className:"btn btn-primary", onClick: function(){ onQuickAdd(cat.id); } }, t("modal.addPrefix") + categoryLabel(cat.id))
       )
     )
   );
@@ -1552,7 +2091,7 @@ function ObservationDetailSheet(props){
   ].filter(function(r){ return r[1] != null; });
   return e("div", { className:"modal-overlay", onClick: function(e2){ if(e2.target===e2.currentTarget) onClose(); } },
     e("div", { className:"modal" },
-      e("h2", null, "Field observation"),
+      e("h2", null, t("modal.fieldObservation")),
       e("div", { className:"hint", style:{ marginBottom:"12px" } }, relativeLabel(daysSince(o.date)) + " · " + formatDateDisplay(o.date)),
       rows.length > 0 && e("div", { style:{ marginBottom:"12px" } }, rows.map(function(r){
         return e("div", { key:r[0], style:{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid var(--border-subtle)", fontSize:"13.5px" } },
@@ -1561,8 +2100,8 @@ function ObservationDetailSheet(props){
       })),
       o.notes && e("div", { className:"obs", style:{ marginBottom:"14px" } }, "“" + o.notes + "”"),
       e("div", { className:"modal-actions" },
-        e("button", { className:"btn btn-secondary", onClick: function(){ onEdit(o); } }, "Edit"),
-        e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ onDelete(o.id); } }, "Delete")
+        e("button", { className:"btn btn-secondary", onClick: function(){ onEdit(o); } }, t("common.edit")),
+        e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ onDelete(o.id); } }, t("common.delete"))
       )
     )
   );
@@ -1580,8 +2119,8 @@ function ActivityRow(props){
           e("div", { className:"ring-num neutral" }, "–")
         ),
     e("div", { className:"ev-mid" },
-      e("div", { className:"ev-name" }, cat.label),
-      e("div", { className:"ev-sub" }, ev ? relativeLabel(days) : "Not logged yet · tap to add")
+      e("div", { className:"ev-name" }, categoryLabel(cat.id)),
+      e("div", { className:"ev-sub" }, ev ? relativeLabel(days) : t("common.notLoggedYetTap"))
     )
   );
 }
@@ -1591,50 +2130,61 @@ function WhySourceLinks(props){
   const links = keys.map(function(k){ return SOURCE_LINKS[k]; }).filter(Boolean);
   if(links.length === 0) return null;
   return e("div", { className:"why-source-links" }, links.map(function(s, i){
-    return e("a", { key:i, className:"why-source-link", href:s.url, target:"_blank", rel:"noopener noreferrer" }, s.name + " \u2197");
+    return e("a", { key:i, className:"why-source-link", href:s.url, target:"_blank", rel:"noopener noreferrer", onClick: function(ev){ ev.stopPropagation(); } }, s.name + " \u2197");
   }));
 }
 
-// The whole card expands/collapses as one unit — tapping anywhere on the header reveals
-// everything at once. Collapsed, it still shows the headline, status, and the guideline
-// criteria so there's something useful to read before ever tapping.
-function WhyAdvisoryCard(props){
-  const engineCheck = props.engineCheck;
+// Shared collapsible-card shell for every card on the Why screen (engine advisory, one-time
+// action, threat, routine action, guardrail note). Guarantees identical collapsed dimensions
+// across all of them — collapsed always shows just title + one badge/summary line, nothing
+// else — and lets a tap ANYWHERE on the card (not just the header) toggle it, per the user's
+// request. Content passed as children only renders while open, so it never affects collapsed
+// height. A tap inside the open content (e.g. a source link) stops propagation so it doesn't
+// also collapse the card back up.
+function WhyCard(props){
   const [open, setOpen] = useState(false);
-  return e("div", { className:"why-block", id:"why-engine" },
-    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, onKeyDown: onActivateKey(function(){ setOpen(!open); }), role:"button", tabIndex:0 },
-      e("div", { style:{ textAlign:"left" } },
-        e("div", { className:"why-title" }, engineCheck.label),
-        e("div", { className:"why-status-row" },
-          e("span", { className:"why-status-badge " + engineCheck.overall },
-            engineCheck.overall === "full" ? "Matches guideline"
-            : engineCheck.overall === "partial" ? "Partially matches"
-            : engineCheck.overall === "none" ? "Not yet matching"
-            : "No observation logged yet")
-        )
+  const toggle = function(){ setOpen(!open); };
+  return e("div", {
+      className: "why-block" + (props.extraClass ? " " + props.extraClass : ""),
+      id: props.id, onClick: toggle, onKeyDown: onActivateKey(toggle), role:"button", tabIndex:0
+    },
+    e("div", { className:"why-card-head" },
+      e("div", { style:{ textAlign:"left", minWidth:0, flex:1 } },
+        e("div", { className:"why-title" }, props.title),
+        props.badgeText
+          ? e("div", { className:"why-status-row" }, e("span", { className:"why-status-badge " + props.badgeClass }, props.badgeText))
+          : (props.summaryLine ? e("div", { className:"hint", style:{ marginTop:"4px" } }, props.summaryLine) : null)
       ),
       e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
     ),
+    open && e("div", { onClick: function(ev){ ev.stopPropagation(); } }, props.children)
+  );
+}
 
-    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What the guideline expects"),
+function WhyAdvisoryCard(props){
+  const engineCheck = props.engineCheck;
+  const badgeText = engineCheck.overall === "full" ? t("why.matchesGuideline")
+    : engineCheck.overall === "partial" ? t("why.partiallyMatches")
+    : engineCheck.overall === "none" ? t("why.notYetMatching")
+    : t("why.noObsLoggedShort");
+  return e(WhyCard, { id:"why-engine", title: engineCheck.label, badgeClass: engineCheck.overall, badgeText: badgeText },
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatGuidelineExpects")),
     e("div", { className:"why-criteria-list" }, engineCheck.results.map(function(r, i){
       return e("div", { className:"why-criterion", key:i },
         e("div", { className:"why-crit-field" }, r.fieldLabel),
-        e("div", { className:"why-crit-expected" }, "Guideline: " + r.expectedText),
-        e("div", { className:"why-crit-observed" }, r.observedValue ? ("You recorded: " + r.observedValue) : "Not recorded yet")
+        e("div", { className:"why-crit-expected" }, t("why.guidelinePrefix") + ": " + r.expectedText),
+        e("div", { className:"why-crit-observed" }, r.observedValue ? (t("why.youRecorded") + ": " + r.observedValue) : t("why.notRecordedYet"))
       );
     })),
 
-    open && e(React.Fragment, null,
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What was observed"),
-      e("div", { className:"hint" }, engineCheck.observationDate
-        ? "From your observation logged " + relativeLabel(daysSince(engineCheck.observationDate)) + " (" + formatDateDisplay(engineCheck.observationDate) + ")."
-        : "No observation logged yet in this stage. Add one from Settings to see a real comparison here."),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatWasObserved")),
+    e("div", { className:"hint" }, engineCheck.observationDate
+      ? t("why.fromObservationLogged") + " " + relativeLabel(daysSince(engineCheck.observationDate)) + " (" + formatDateDisplay(engineCheck.observationDate) + ")."
+      : t("why.noObsInStage")),
 
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "Source"),
-      e("div", { className:"hint", style:{ marginBottom:"8px" } }, engineCheck.sourceNote),
-      e(WhySourceLinks, { sourceKeys: engineCheck.sourceKeys })
-    )
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    e("div", { className:"hint", style:{ marginBottom:"8px" } }, engineCheck.sourceNote),
+    e(WhySourceLinks, { sourceKeys: engineCheck.sourceKeys })
   );
 }
 
@@ -1644,65 +2194,77 @@ function WhyAdvisoryCard(props){
 function WhyOneTimeActionCard(props){
   const data = props.data;
   const action = data.action;
-  const [open, setOpen] = useState(false);
-  return e("div", { className:"why-block", id:"why-onetime-" + data.key },
-    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, onKeyDown: onActivateKey(function(){ setOpen(!open); }), role:"button", tabIndex:0 },
-      e("div", { style:{ textAlign:"left" } },
-        e("div", { className:"why-title" }, action.label),
-        e("div", { className:"why-status-row" },
-          e("span", { className:"why-status-badge partial" }, "Action needed")
-        )
-      ),
-      e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
-    ),
+  return e(WhyCard, { id:"why-onetime-" + data.key, title: action.label, badgeClass:"partial", badgeText: t("why.actionNeeded") },
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatWasLogged")),
+    e("div", { className:"hint" }, (props.metaText || t("why.logged")) + " " + relativeLabel(daysSince(data.triggerEvent.date)) + " (" + formatDateDisplay(data.triggerEvent.date) + ")."),
 
-    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What was logged"),
-    e("div", { className:"hint" }, (props.metaText || "Logged") + " " + relativeLabel(daysSince(data.triggerEvent.date)) + " (" + formatDateDisplay(data.triggerEvent.date) + ")."),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatToDo")),
+    e("div", { className:"hint" }, action.guidance),
 
-    open && e(React.Fragment, null,
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to do"),
-      e("div", { className:"hint" }, action.guidance),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatToAvoid")),
+    e("div", { className:"hint" }, action.avoid),
 
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to avoid"),
-      e("div", { className:"hint" }, action.avoid),
-
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "Source"),
-      e(WhySourceLinks, { sourceKeys: action.sourceKeys })
-    )
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    e(WhySourceLinks, { sourceKeys: action.sourceKeys })
   );
+}
+
+function severityBadgeText(sev){
+  return sev === "critical" ? t("why.criticalConcern")
+    : sev === "high" ? t("why.highConcern")
+    : sev === "medium" ? t("why.mediumConcern")
+    : t("why.lowConcern");
+}
+function severityBadgeClass(sev){
+  return sev === "critical" ? "none" : sev === "high" ? "partial" : "no-data";
 }
 
 // A diagnosed pest/disease threat — same collapsible-card language as the rest of Why, styled
 // by severity so a critical storage-disease warning reads differently from a medium one.
 function WhyThreatCard(props){
-  const t = props.threat;
-  const [open, setOpen] = useState(false);
-  return e("div", { className:"why-block threat-" + t.severity, id:"why-threat-" + t.id },
-    e("div", { className:"why-card-head", onClick:function(){ setOpen(!open); }, onKeyDown: onActivateKey(function(){ setOpen(!open); }), role:"button", tabIndex:0 },
-      e("div", { style:{ textAlign:"left" } },
-        e("div", { className:"why-title" }, t.label),
-        e("div", { className:"why-status-row" },
-          e("span", { className:"why-status-badge " + (t.severity === "critical" ? "none" : t.severity === "high" ? "partial" : "no-data") }, t.severity.charAt(0).toUpperCase() + t.severity.slice(1) + " concern")
-        )
-      ),
-      e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
-    ),
+  const threat = props.threat;
+  return e(WhyCard, { id:"why-threat-" + threat.id, extraClass:"threat-" + threat.severity, title: threat.label,
+      badgeClass: severityBadgeClass(threat.severity), badgeText: severityBadgeText(threat.severity) },
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatWasLogged")),
+    e("div", { className:"hint" }, t("why.fromObservationShort") + " " + relativeLabel(daysSince(threat.observationDate)) + " (" + formatDateDisplay(threat.observationDate) + ")."),
 
-    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What was logged"),
-    e("div", { className:"hint" }, "From your observation " + relativeLabel(daysSince(t.observationDate)) + " (" + formatDateDisplay(t.observationDate) + ")."),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatToDo")),
+    e("div", { className:"hint" }, threat.message),
 
-    open && e(React.Fragment, null,
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to do"),
-      e("div", { className:"hint" }, t.message),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatToAvoid")),
+    e("div", { className:"hint" }, threat.avoid),
 
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "What to avoid"),
-      e("div", { className:"hint" }, t.avoid),
-
-      e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, "Source"),
-      e(WhySourceLinks, { sourceKeys: t.sourceKeys })
-    )
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    e(WhySourceLinks, { sourceKeys: threat.sourceKeys })
   );
 }
+
+// A routine (recurring) action card — fertilizer/spray/weeding/irrigation/custom — showing
+// sourced guidance plus when it was last logged. Now collapsible like every other Why card,
+// where it used to always render fully expanded.
+function WhyRoutineActionCard(props){
+  const ev = props.ev, catId = props.catId, guidance = props.guidance;
+  return e(WhyCard, { id:"why-action-" + catId, title: nextActionTitle(ev), badgeClass:"no-data",
+      badgeText: t("why.lastDone") + " " + relativeLabel(daysSince(ev.date)) },
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.guideline")),
+    e("div", { className:"hint", style:{ marginBottom:"8px" } }, guidance.text),
+    e(WhySourceLinks, { sourceKeys: guidance.sourceKeys })
+  );
+}
+
+// A retrospective timing/safety guardrail note — same collapsible pattern as everything else,
+// where it used to always render fully expanded.
+function WhyGuardrailCard(props){
+  const g = props.guardrail;
+  return e(WhyCard, { id:"why-guardrail-" + props.idx, extraClass:"guardrail-" + g.severity, title: g.label,
+      badgeClass: severityBadgeClass(g.severity), badgeText: severityBadgeText(g.severity) },
+    e("div", { className:"hint", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.logged2") + " " + formatDateDisplay(g.eventDate)),
+    e("div", { className:"why-subhead", style:{ marginBottom:"6px" } }, t("why.forNextTime")),
+    e("div", { className:"hint", style:{ marginBottom:"8px" } }, g.message + " " + g.avoid),
+    e(WhySourceLinks, { sourceKeys: g.sourceKeys })
+  );
+}
+
 
 // The Why screen — answers "why is the app telling me this?" It never introduces new logic of
 // its own; it only explains the engine advisory (evaluateBaselineCheck) and the routine action
@@ -1758,58 +2320,46 @@ function WhyScreen(props){
   }, [props.focus && props.focus.token]);
 
   return e("div", { style:{ paddingBottom:"76px" } },
-    e("div", { className:"header" }, e("div", { className:"farmname" }, "Current stage advisory")),
+    e("div", { className:"header" }, e("div", { className:"farmname" }, t("why.title"))),
 
     threats.length > 0 && e(React.Fragment, null,
-      e("div", { className:"section-label" }, "Field health"),
-      e("div", { style:{ margin:"0 20px 20px" } }, threats.map(function(t){
-        return e("div", { key: t.id, style:{ marginBottom:"12px" } }, e(WhyThreatCard, { threat: t }));
+      e("div", { className:"section-label" }, t("why.fieldHealth")),
+      e("div", { style:{ margin:"0 20px 20px" } }, threats.map(function(threat){
+        return e("div", { key: threat.id, style:{ marginBottom:"12px" } }, e(WhyThreatCard, { threat: threat }));
       }))
     ),
 
     !seasonPhase.heroPhase
-      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, "No active season yet. Log a Sowing date to start."))
+      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, t("why.noActiveSeason")))
       : e(React.Fragment, null,
           !engineCheck
             ? null
             : e("div", { style:{ margin:"0 20px 12px" } }, e(WhyAdvisoryCard, { engineCheck: engineCheck })),
           nurseryMulchAction && nurseryMulchAction.status === "due" &&
-            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: nurseryMulchAction, metaText:"Seedlings emerged" })),
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: nurseryMulchAction, metaText:t("why.seedlingsEmerged") })),
           erectShadeAction && erectShadeAction.status === "due" &&
-            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: erectShadeAction, metaText:"Sun scorch logged" })),
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: erectShadeAction, metaText:t("why.sunScorchLogged") })),
           removeShadeAction && removeShadeAction.status === "due" &&
-            e("div", { style:{ margin:"0 20px 20px" } }, e(WhyOneTimeActionCard, { data: removeShadeAction, metaText:"Shade erected" })),
+            e("div", { style:{ margin:"0 20px 20px" } }, e(WhyOneTimeActionCard, { data: removeShadeAction, metaText:t("why.shadeErectedMeta") })),
           !engineCheck && !(nurseryMulchAction && nurseryMulchAction.status === "due")
             && !(erectShadeAction && erectShadeAction.status === "due") && !(removeShadeAction && removeShadeAction.status === "due") &&
             e("div", { className:"empty-state", style:{ margin:"0 20px 20px" } },
-              e("div", null, "Nothing to check at this stage (" + seasonPhase.heroStageLabel + ") right now. This screen will show something once you're at a stage boundary the engine tracks."))
+              e("div", null, t("why.nothingToCheck") + " (" + stageLabelDisplay(seasonPhase.heroStageLabel) + ") " + t("why.nothingToCheckTail")))
         ),
 
-    e("div", { className:"section-label" }, "Routine actions"),
+    e("div", { className:"section-label" }, t("why.routineActions")),
     actionCats.length === 0
-      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, "No routine actions logged yet."))
+      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, t("why.noRoutineActions")))
       : e("div", { style:{ margin:"0 20px" } }, actionCats.map(function(catId){
           const ev = latestByCat[catId];
           const guidance = guidanceFor(catId, seasonPhase.heroPhase);
-          return e("div", { className:"why-block", id:"why-action-" + catId, style:{ marginBottom:"12px" }, key:catId },
-            e("div", { className:"why-title" }, nextActionTitle(ev)),
-            e("div", { className:"hint", style:{ marginBottom:"8px" } }, "Last done " + relativeLabel(daysSince(ev.date)) + " (" + formatDateDisplay(ev.date) + ")"),
-            e("div", { className:"why-subhead", style:{ marginTop:"10px", marginBottom:"6px" } }, "Guideline"),
-            e("div", { className:"hint", style:{ marginBottom:"8px" } }, guidance.text),
-            e(WhySourceLinks, { sourceKeys: guidance.sourceKeys })
-          );
+          return e("div", { style:{ marginBottom:"12px" }, key:catId }, e(WhyRoutineActionCard, { ev: ev, catId: catId, guidance: guidance }));
         })),
 
     guardrailFlags.length > 0 && e(React.Fragment, null,
-      e("div", { className:"section-label", id:"why-guardrails-section" }, "Guardrail notes"),
+      e("div", { className:"section-label", id:"why-guardrails-section" }, t("why.guardrailNotes")),
       e("div", { style:{ margin:"0 20px" } }, guardrailFlags.map(function(g, i){
-        return e("div", { className:"why-block guardrail-" + g.severity, style:{ marginBottom:"12px" }, key: g.id + i },
-          e("div", { className:"why-title" }, g.label),
-          e("div", { className:"hint", style:{ marginBottom:"8px" } }, "Logged " + formatDateDisplay(g.eventDate)),
-          e("div", { className:"why-subhead", style:{ marginBottom:"6px" } }, "For next time"),
-          e("div", { className:"hint", style:{ marginBottom:"8px" } }, g.message + " " + g.avoid),
-          e(WhySourceLinks, { sourceKeys: g.sourceKeys })
-        );
+        return e("div", { style:{ marginBottom:"12px" }, key: g.id + i }, e(WhyGuardrailCard, { guardrail: g, idx: i }));
       }))
     )
   );
@@ -1839,26 +2389,26 @@ function HistoryScreen(props){
   }, [withOrd]);
 
   return e("div", { style:{ paddingBottom:"76px" } },
-    e("div", { className:"header" }, e("div", { className:"farmname" }, "History")),
+    e("div", { className:"header" }, e("div", { className:"farmname" }, t("history.title"))),
 
-    e("div", { className:"section-label" }, "All activities"),
-    e("div", { className:"hint", style:{ margin:"0 20px 10px" } }, "Tap any activity for full details, editing, or delete."),
+    e("div", { className:"section-label" }, t("history.allActivities")),
+    e("div", { className:"hint", style:{ margin:"0 20px 10px" } }, t("history.tapForDetails")),
     e("div", { className:"card-list" }, CATEGORIES.map(function(cat){
       return e(ActivityRow, { key: cat.id, cat: cat, ev: latestByCat[cat.id] || null, onOpen: function(c, ev){ setDetail({ cat: c, ev: ev }); } });
     })),
 
-    e("div", { className:"section-label" }, "Season timeline"),
+    e("div", { className:"section-label" }, t("history.seasonTimeline")),
     milestones.length === 0
-      ? e("div", { className:"empty-state" }, e("div", null, "No milestones logged yet.") )
+      ? e("div", { className:"empty-state" }, e("div", null, t("history.noMilestones")) )
       : e("div", { className:"timeline-vertical" }, milestones.map(function(ev, i){
           return e(TimelineVerticalItem, { key: ev.id, ev: ev, isLast: i === milestones.length - 1 });
         })),
 
-    e("div", { className:"section-label" }, "Field observations"),
+    e("div", { className:"section-label" }, t("settings.fieldObservations")),
     (function(){
       const sortedObs = (state.observations || []).slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
       return sortedObs.length === 0
-        ? e("div", { className:"empty-state" }, e("div", null, "No observations logged yet.") )
+        ? e("div", { className:"empty-state" }, e("div", null, t("history.noObservations")) )
         : e("div", { className:"card-list" }, sortedObs.map(function(o){
             const days = daysSince(o.date);
             return e("div", { className:"event-card", key: o.id, onClick: function(){ setObsDetail(o); }, onKeyDown: onActivateKey(function(){ setObsDetail(o); }), role:"button", tabIndex:0 },
@@ -1892,8 +2442,8 @@ function OptionalSelect(props){
   return e("div", { className:"field" },
     e("label", null, props.label),
     e("select", { value: props.value, onChange: function(ev){ props.onChange(ev.target.value); } },
-      e("option", { value:"" }, "Not observed"),
-      props.options.map(function(o){ return e("option", { value:o, key:o }, o); })
+      e("option", { value:"" }, currentLang === "sw" ? "Hakuna lililoangaliwa" : "Not observed"),
+      props.options.map(function(o){ return e("option", { value:o, key:o }, optionLabel(o)); })
     )
   );
 }
@@ -1932,55 +2482,55 @@ function AreaCalculatorModal(props){
 
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
-      e("h2", null, "Area calculator"),
+      e("h2", null, t("calc.area")),
 
       e("div", { className:"shape-select" }, BED_SHAPES.map(function(s){
         return e("button", { key: s.id, className:"shape-btn" + (shape===s.id ? " active" : ""), onClick: function(){ setShape(s.id); setError(""); } },
-          shapeIconSvg(s.id), e("div", { className:"shape-btn-label" }, s.label));
+          shapeIconSvg(s.id), e("div", { className:"shape-btn-label" }, shapeLabel(s.id)));
       })),
 
       shape === "rectangle" && e("div", { className:"field-row" },
-        e("div", { className:"field" }, e("label", null, "Length (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: length, onChange: function(ev){ setLength(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "Width (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: width, onChange: function(ev){ setWidth(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, t("calc.length")), e("input", { type:"number", min:"0", inputMode:"decimal", value: length, onChange: function(ev){ setLength(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, t("calc.width")), e("input", { type:"number", min:"0", inputMode:"decimal", value: width, onChange: function(ev){ setWidth(ev.target.value); } }))
       ),
       shape === "trapezoid" && e(React.Fragment, null,
         e("div", { className:"field-row" },
-          e("div", { className:"field" }, e("label", null, "Length (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: length, onChange: function(ev){ setLength(ev.target.value); } })),
-          e("div", { className:"field" }, e("label", null, "Width A (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: width, onChange: function(ev){ setWidth(ev.target.value); } })),
-          e("div", { className:"field" }, e("label", null, "Width B (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: width2, onChange: function(ev){ setWidth2(ev.target.value); } }))
+          e("div", { className:"field" }, e("label", null, t("calc.length")), e("input", { type:"number", min:"0", inputMode:"decimal", value: length, onChange: function(ev){ setLength(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, t("calc.widthA")), e("input", { type:"number", min:"0", inputMode:"decimal", value: width, onChange: function(ev){ setWidth(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, t("calc.widthB")), e("input", { type:"number", min:"0", inputMode:"decimal", value: width2, onChange: function(ev){ setWidth2(ev.target.value); } }))
         )
       ),
       shape === "right_triangle" && e("div", { className:"field-row" },
-        e("div", { className:"field" }, e("label", null, "Base (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: base, onChange: function(ev){ setBase(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "Height (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: height, onChange: function(ev){ setHeight(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, t("calc.base")), e("input", { type:"number", min:"0", inputMode:"decimal", value: base, onChange: function(ev){ setBase(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, t("calc.height")), e("input", { type:"number", min:"0", inputMode:"decimal", value: height, onChange: function(ev){ setHeight(ev.target.value); } }))
       ),
       shape === "acute_triangle" && e(React.Fragment, null,
         e("div", { className:"field-row" },
-          e("div", { className:"field" }, e("label", null, "Side A (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideA, onChange: function(ev){ setSideA(ev.target.value); } })),
-          e("div", { className:"field" }, e("label", null, "Side B (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideB, onChange: function(ev){ setSideB(ev.target.value); } })),
-          e("div", { className:"field" }, e("label", null, "Side C (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideC, onChange: function(ev){ setSideC(ev.target.value); } }))
+          e("div", { className:"field" }, e("label", null, t("calc.sideA")), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideA, onChange: function(ev){ setSideA(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, t("calc.sideB")), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideB, onChange: function(ev){ setSideB(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, t("calc.sideC")), e("input", { type:"number", min:"0", inputMode:"decimal", value: sideC, onChange: function(ev){ setSideC(ev.target.value); } }))
         )
       ),
 
-      previewArea !== null && e("div", { className:"hint", style:{ marginBottom:"8px" } }, "This plot: " + previewArea.toFixed(1) + " m²"),
+      previewArea !== null && e("div", { className:"hint", style:{ marginBottom:"8px" } }, t("calc.thisPlot") + ": " + previewArea.toFixed(1) + " m²"),
       error && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"8px" } }, error),
 
-      e("button", { className:"add-btn", onClick: handleAdd }, "+ Add this plot"),
+      e("button", { className:"add-btn", onClick: handleAdd }, t("calc.addPlot")),
 
-      beds.length > 0 && e("div", { className:"calc-total" }, e("span", null, beds.length + " plot" + (beds.length===1?"":"s")), e("span", null, totalArea.toFixed(1) + " m²")),
+      beds.length > 0 && e("div", { className:"calc-total" }, e("span", null, beds.length + " " + (currentLang === "sw" ? "maeneo" : ("plot" + (beds.length===1?"":"s")))), e("span", null, totalArea.toFixed(1) + " m²")),
 
       beds.length > 0 && e("div", { style:{ marginTop:"6px" } }, beds.map(function(b, i){
         return e("div", { className:"bed-row", key: b.id },
           e("div", null,
-            e("div", { style:{ fontSize:"13px", fontWeight:700 } }, "Plot " + (i+1) + " — " + shapeLabel(b.shape)),
+            e("div", { style:{ fontSize:"13px", fontWeight:700 } }, t("calc.plot") + " " + (i+1) + " — " + shapeLabel(b.shape)),
             e("div", { className:"hint" }, bedDimsSummary(b.shape, b.dims) + " · " + b.area.toFixed(1) + " m²")
           ),
-          e("button", { className:"bed-remove", onClick: function(){ props.onRemove(b.id); } }, "Remove")
+          e("button", { className:"bed-remove", onClick: function(){ props.onRemove(b.id); } }, t("calc.remove"))
         );
       })),
 
       e("div", { className:"modal-actions" },
-        e("button", { className:"btn btn-primary", onClick: props.onClose }, "Done")
+        e("button", { className:"btn btn-primary", onClick: props.onClose }, t("common.done"))
       )
     )
   );
@@ -2010,45 +2560,45 @@ function SprayCalculatorModal(props){
 
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
-      e("h2", null, "Foliar / herbicide / insecticide"),
+      e("h2", null, t("calc.spray")),
 
-      e("div", { className:"field" }, e("label", null, "Product category"),
+      e("div", { className:"field" }, e("label", null, t("calc.productCategory")),
         e("select", { value: category, onChange: function(ev){ setCategory(ev.target.value); } },
-          SPRAY_CALC_CATEGORIES.map(function(c){ return e("option", { value:c, key:c }, c); }))),
+          SPRAY_CALC_CATEGORIES.map(function(c){ return e("option", { value:c, key:c }, optionLabel(c)); }))),
 
       e("div", { className:"hint", style:{ marginBottom:"10px" } },
         props.bedsCount > 0
-          ? "Using saved area: " + props.bedsCount + " plots · " + props.totalArea.toFixed(1) + " m²"
-          : "No plots saved yet in the Area calculator — enter a total below."),
-      e("div", { className:"field" }, e("label", null, "Override total area, m² (optional)"),
+          ? t("calc.usingSavedArea") + ": " + props.bedsCount + " " + t("calc.plotsWord") + " · " + props.totalArea.toFixed(1) + " m²"
+          : t("calc.noPlotsSaved")),
+      e("div", { className:"field" }, e("label", null, t("calc.overrideArea")),
         e("input", { type:"number", min:"0", inputMode:"decimal", placeholder: props.totalArea ? props.totalArea.toFixed(1) : "", value: overrideArea, onChange: function(ev){ setOverrideArea(ev.target.value); } })),
 
       e("div", { className:"field-row" },
-        e("div", { className:"field" }, e("label", null, "Product rate (ml)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: rateMl, onChange: function(ev){ setRateMl(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "Per how many L"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: ratePerLiters, onChange: function(ev){ setRatePerLiters(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, t("calc.productRate")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: rateMl, onChange: function(ev){ setRateMl(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, t("calc.perHowManyL")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: ratePerLiters, onChange: function(ev){ setRatePerLiters(ev.target.value); } }))
       ),
 
       e("div", { className:"field-row" },
-        e("div", { className:"field" }, e("label", null, "Tank size (L)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: tankSizeL, onChange: function(ev){ setTankSizeL(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "m² per tank"), e("input", { type:"number", min:"0", inputMode:"decimal", value: areaPerTank, onChange: function(ev){ setAreaPerTank(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, t("calc.tankSize")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 20", value: tankSizeL, onChange: function(ev){ setTankSizeL(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, t("calc.areaPerTank")), e("input", { type:"number", min:"0", inputMode:"decimal", value: areaPerTank, onChange: function(ev){ setAreaPerTank(ev.target.value); } }))
       ),
       e("button", { className:"suggest-btn", onClick: function(){ setCalibrateOpen(true); } },
-        "Calibrate my sprayer",
-        e("span", { className:"suggest-sub" }, "Measure it for real instead of guessing")),
+        t("calc.calibrateSprayer"),
+        e("span", { className:"suggest-sub" }, t("calc.calibrateSub"))),
 
       e("div", { className:"field-row" },
-        e("div", { className:"field" }, e("label", null, "Bottle size (ml)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 1000", value: bottleSizeMl, onChange: function(ev){ setBottleSizeMl(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "Waste buffer (%)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: bufferPct, onChange: function(ev){ setBufferPct(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, t("calc.bottleSize")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 1000", value: bottleSizeMl, onChange: function(ev){ setBottleSizeMl(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, t("calc.wasteBuffer")), e("input", { type:"number", min:"0", inputMode:"decimal", value: bufferPct, onChange: function(ev){ setBufferPct(ev.target.value); } }))
       ),
 
       e("div", { className:"calc-result" },
-        e("div", { className:"calc-result-row" }, e("span", null, "Tank refills needed"), e("span", null, tanksNeeded != null ? tanksNeeded : "—")),
-        e("div", { className:"calc-result-row" }, e("span", null, "Total product (with buffer)"), e("span", null, totalWithBuffer != null ? Math.round(totalWithBuffer) + " ml" : "—")),
-        e("div", { className:"calc-result-row total" }, e("span", null, "Bottles to buy"), e("span", null, bottlesNeeded != null ? bottlesNeeded : "—"))
+        e("div", { className:"calc-result-row" }, e("span", null, t("calc.tankRefills")), e("span", null, tanksNeeded != null ? tanksNeeded : "—")),
+        e("div", { className:"calc-result-row" }, e("span", null, t("calc.totalProduct")), e("span", null, totalWithBuffer != null ? Math.round(totalWithBuffer) + " ml" : "—")),
+        e("div", { className:"calc-result-row total" }, e("span", null, t("calc.bottlesToBuy")), e("span", null, bottlesNeeded != null ? bottlesNeeded : "—"))
       ),
 
       e("div", { className:"modal-actions" },
-        e("button", { className:"btn btn-primary", onClick: props.onClose }, "Done")
+        e("button", { className:"btn btn-primary", onClick: props.onClose }, t("common.done"))
       )
     ),
 
@@ -2071,28 +2621,28 @@ function SprayCalibrationModal(props){
 
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
-      e("h2", null, "Calibrate my sprayer"),
+      e("h2", null, t("calc.calibrateTitle")),
       e("div", { className:"hint", style:{ marginBottom:"14px" } },
-        "Mark a small patch, spray it with water only at your normal pace, and measure what you used. Replaces guessing."),
+        t("calc.calibrateHint")),
 
-      !(props.tankSizeL > 0) && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"10px" } }, "Enter your tank size on the previous screen first."),
+      !(props.tankSizeL > 0) && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"10px" } }, t("calc.enterTankFirst")),
 
       e("div", { className:"field-row" },
-        e("div", { className:"field" }, e("label", null, "Test patch length (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: testLength, onChange: function(ev){ setTestLength(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "Test patch width (m)"), e("input", { type:"number", min:"0", inputMode:"decimal", value: testWidth, onChange: function(ev){ setTestWidth(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, t("calc.testPatchLength")), e("input", { type:"number", min:"0", inputMode:"decimal", value: testLength, onChange: function(ev){ setTestLength(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, t("calc.testPatchWidth")), e("input", { type:"number", min:"0", inputMode:"decimal", value: testWidth, onChange: function(ev){ setTestWidth(ev.target.value); } }))
       ),
-      testArea != null && e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Test area: " + testArea.toFixed(1) + " m²"),
+      testArea != null && e("div", { className:"hint", style:{ marginBottom:"10px" } }, t("calc.testArea") + ": " + testArea.toFixed(1) + " m²"),
 
-      e("div", { className:"field" }, e("label", null, "Water used to spray it (L)"),
+      e("div", { className:"field" }, e("label", null, t("calc.waterUsed")),
         e("input", { type:"number", min:"0", inputMode:"decimal", value: waterUsedL, onChange: function(ev){ setWaterUsedL(ev.target.value); } })),
 
       e("div", { className:"calc-result" },
-        e("div", { className:"calc-result-row total" }, e("span", null, "Your tank covers"), e("span", null, areaPerTank != null ? areaPerTank.toFixed(1) + " m²" : "—"))
+        e("div", { className:"calc-result-row total" }, e("span", null, t("calc.tankCovers")), e("span", null, areaPerTank != null ? areaPerTank.toFixed(1) + " m²" : "—"))
       ),
 
       e("div", { className:"modal-actions" },
-        e("button", { className:"btn btn-secondary", onClick: props.onClose }, "Cancel"),
-        areaPerTank != null && e("button", { className:"btn btn-primary", onClick: function(){ props.onUse(areaPerTank); } }, "Use this value")
+        e("button", { className:"btn btn-secondary", onClick: props.onClose }, t("common.cancel")),
+        areaPerTank != null && e("button", { className:"btn btn-primary", onClick: function(){ props.onUse(areaPerTank); } }, t("calc.useThisValue"))
       )
     )
   );
@@ -2128,24 +2678,24 @@ function FertilizerCalculatorModal(props){
 
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
-      e("h2", null, "Granular fertilizer"),
+      e("h2", null, t("calc.fert")),
 
       e("div", { className:"hint", style:{ marginBottom:"10px" } },
         props.bedsCount > 0
-          ? "Using saved area: " + props.bedsCount + " plots · " + props.totalArea.toFixed(1) + " m²"
-          : "No plots saved yet in the Area calculator — enter a total below."),
-      e("div", { className:"field" }, e("label", null, "Override total area, m² (optional)"),
+          ? t("calc.usingSavedArea") + ": " + props.bedsCount + " " + t("calc.plotsWord") + " · " + props.totalArea.toFixed(1) + " m²"
+          : t("calc.noPlotsSaved")),
+      e("div", { className:"field" }, e("label", null, t("calc.overrideArea")),
         e("input", { type:"number", min:"0", inputMode:"decimal", placeholder: props.totalArea ? props.totalArea.toFixed(1) : "", value: overrideArea, onChange: function(ev){ setOverrideArea(ev.target.value); } })),
 
-      e("div", { className:"field" }, e("label", null, "Fertilizer"),
+      e("div", { className:"field" }, e("label", null, t("calc.fertilizer")),
         e("select", { value: fertilizerType, onChange: function(ev){ setFertilizerType(ev.target.value); } },
-          FERTILIZER_TYPES.map(function(t){ return e("option", { value:t, key:t }, t); }))),
+          FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); }))),
       composition && e("div", { className:"hint", style:{ marginBottom:"14px" } },
-        "Typical: " + composition.n + "% N" + (composition.p ? ", " + composition.p + "% P₂O₅" : "") + (composition.k ? ", " + composition.k + "% K₂O" : "") + (composition.ca ? ", " + composition.ca + "% Ca" : "") + " — check your own bag, grades vary."),
+        t("calc.typical") + ": " + composition.n + "% N" + (composition.p ? ", " + composition.p + "% P₂O₅" : "") + (composition.k ? ", " + composition.k + "% K₂O" : "") + (composition.ca ? ", " + composition.ca + "% Ca" : "") + " — " + t("calc.checkOwnBag")),
 
       e("div", { className:"shape-select" },
-        e("button", { className:"shape-btn" + (mode==="area" ? " active" : ""), onClick: function(){ setMode("area"); } }, e("div", { className:"shape-btn-label" }, "By area")),
-        e("button", { className:"shape-btn" + (mode==="plant" ? " active" : ""), onClick: function(){ setMode("plant"); } }, e("div", { className:"shape-btn-label" }, "By plant count"))
+        e("button", { className:"shape-btn" + (mode==="area" ? " active" : ""), onClick: function(){ setMode("area"); } }, e("div", { className:"shape-btn-label" }, t("calc.byArea"))),
+        e("button", { className:"shape-btn" + (mode==="plant" ? " active" : ""), onClick: function(){ setMode("plant"); } }, e("div", { className:"shape-btn-label" }, t("calc.byPlantCount")))
       ),
 
       mode === "area" && e(React.Fragment, null,
@@ -2155,43 +2705,43 @@ function FertilizerCalculatorModal(props){
                 preset.label,
                 e("span", { className:"suggest-sub" }, preset.sub));
             })
-          : e("div", { className:"hint", style:{ marginBottom:"14px" } }, "No suggested rate for " + fertilizerType + " yet — enter the rate from your product label or extension guide."),
+          : e("div", { className:"hint", style:{ marginBottom:"14px" } }, t("calc.noSuggestedRate") + " " + fertilizerType + " " + t("calc.noSuggestedRateTail")),
 
         e("div", { className:"field-row" },
-          e("div", { className:"field" }, e("label", null, "Fertilizer rate (kg)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 2", value: rateKg, onChange: function(ev){ setRateKg(ev.target.value); } })),
-          e("div", { className:"field" }, e("label", null, "Per how many m²"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 10", value: ratePerM2, onChange: function(ev){ setRatePerM2(ev.target.value); } }))
+          e("div", { className:"field" }, e("label", null, t("calc.fertRate")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 2", value: rateKg, onChange: function(ev){ setRateKg(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, t("calc.perHowManyM2")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 10", value: ratePerM2, onChange: function(ev){ setRatePerM2(ev.target.value); } }))
         )
       ),
 
       mode === "plant" && e(React.Fragment, null,
         e("button", { className:"suggest-btn", onClick: function(){ setRowSpacingCm("30"); setPlantSpacingCm("9"); } },
-          "Wider spacing",
+          t("calc.widerSpacing"),
           e("span", { className:"suggest-sub" }, "Row 30cm × plant 9cm · ≈" + Math.round(plantsPerM2(30,9)) + " plants/m² · KALRO onion production guide")),
         e("button", { className:"suggest-btn", onClick: function(){ setRowSpacingCm("22"); setPlantSpacingCm("9"); } },
-          "Tighter spacing",
+          t("calc.tighterSpacing"),
           e("span", { className:"suggest-sub" }, "Row 20–25cm × plant 8–10cm · ≈" + Math.round(plantsPerM2(22,9)) + " plants/m² · South Africa onion planting guide")),
 
         e("div", { className:"field-row" },
-          e("div", { className:"field" }, e("label", null, "Row spacing (cm)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 30", value: rowSpacingCm, onChange: function(ev){ setRowSpacingCm(ev.target.value); } })),
-          e("div", { className:"field" }, e("label", null, "Plant spacing (cm)"), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 9", value: plantSpacingCm, onChange: function(ev){ setPlantSpacingCm(ev.target.value); } }))
+          e("div", { className:"field" }, e("label", null, t("calc.rowSpacing")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 30", value: rowSpacingCm, onChange: function(ev){ setRowSpacingCm(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, t("calc.plantSpacing")), e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"e.g. 9", value: plantSpacingCm, onChange: function(ev){ setPlantSpacingCm(ev.target.value); } }))
         ),
         plantCount != null && e("div", { className:"hint", style:{ marginBottom:"10px" } },
-          "≈ " + plantCount.toLocaleString() + " plants at that spacing over " + totalArea.toFixed(1) + " m² (≈" + Math.round(plantsPerM2(Number(rowSpacingCm), Number(plantSpacingCm))) + " plants/m²)"),
+          "≈ " + plantCount.toLocaleString() + " " + t("calc.approxPlantsAt") + " " + totalArea.toFixed(1) + " m² (≈" + Math.round(plantsPerM2(Number(rowSpacingCm), Number(plantSpacingCm))) + " " + t("calc.approxPlantsM2") + ")"),
 
-        e("div", { className:"field" }, e("label", null, "Fertilizer per plant (g)"),
-          e("input", { type:"number", min:"0", inputMode:"decimal", placeholder:"from your product's label", value: perPlantG, onChange: function(ev){ setPerPlantG(ev.target.value); } }))
+        e("div", { className:"field" }, e("label", null, t("calc.fertPerPlant")),
+          e("input", { type:"number", min:"0", inputMode:"decimal", placeholder: t("calc.fromProductLabel"), value: perPlantG, onChange: function(ev){ setPerPlantG(ev.target.value); } }))
       ),
 
-      e("div", { className:"field" }, e("label", null, "Waste buffer (%)"),
+      e("div", { className:"field" }, e("label", null, t("calc.wasteBuffer")),
         e("input", { type:"number", min:"0", inputMode:"decimal", value: bufferPct, onChange: function(ev){ setBufferPct(ev.target.value); } })),
 
       e("div", { className:"calc-result" },
-        e("div", { className:"calc-result-row" }, e("span", null, "Base need"), e("span", null, totalKg != null ? totalKg.toFixed(2) + " kg" : "—")),
-        e("div", { className:"calc-result-row total" }, e("span", null, "Buy this much (with buffer)"), e("span", null, totalKgWithBuffer != null ? totalKgWithBuffer.toFixed(2) + " kg" : "—"))
+        e("div", { className:"calc-result-row" }, e("span", null, t("calc.baseNeed")), e("span", null, totalKg != null ? totalKg.toFixed(2) + " kg" : "—")),
+        e("div", { className:"calc-result-row total" }, e("span", null, t("calc.buyThisMuch")), e("span", null, totalKgWithBuffer != null ? totalKgWithBuffer.toFixed(2) + " kg" : "—"))
       ),
 
       e("div", { className:"modal-actions" },
-        e("button", { className:"btn btn-primary", onClick: props.onClose }, "Done")
+        e("button", { className:"btn btn-primary", onClick: props.onClose }, t("common.done"))
       )
     )
   );
@@ -2217,6 +2767,7 @@ function SettingsScreen(props){
   const [areaCalcOpen, setAreaCalcOpen] = useState(false);
   const [sprayCalcOpen, setSprayCalcOpen] = useState(false);
   const [fertCalcOpen, setFertCalcOpen] = useState(false);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
   const areaBeds = state.areaBeds || [];
   const totalBedArea = areaBeds.reduce(function(sum, b){ return sum + b.area; }, 0);
 
@@ -2238,10 +2789,10 @@ function SettingsScreen(props){
     const text = buildBackupText();
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(text)
-        .then(function(){ setCopyStatus("Copied."); })
-        .catch(function(){ setCopyStatus("Couldn't copy automatically. Tap the text to select it, then copy."); });
+        .then(function(){ setCopyStatus(t("settings.copied")); })
+        .catch(function(){ setCopyStatus(t("settings.copyFailedTapToSelect")); });
     } else {
-      setCopyStatus("Tap the text to select it, then copy.");
+      setCopyStatus(t("settings.tapToSelect"));
     }
   }
 
@@ -2251,13 +2802,13 @@ function SettingsScreen(props){
     try{
       const parsed = JSON.parse(restoreText.trim());
       if(!parsed || !parsed.farm || !Array.isArray(parsed.events)){
-        setRestoreError("That doesn't look like a valid backup. Check you copied the whole thing.");
+        setRestoreError(t("settings.notValidBackup"));
         return;
       }
       setRestoreError("");
       setRestoreConfirming(true);
     }catch(err){
-      setRestoreError("Couldn't read that as a backup. Check you copied the whole thing.");
+      setRestoreError(t("settings.couldntReadBackup"));
     }
   }
 
@@ -2272,73 +2823,99 @@ function SettingsScreen(props){
     setRestoreOpen(false);
   }
 
+  const lang = props.lang || "en";
+  const onSetLang = props.onSetLang || function(){};
+
   return e("div", { style:{ paddingBottom:"76px" } },
-    e("div", { className:"header" }, e("div", { className:"farmname" }, "Settings")),
-    e("div", { className:"section-label" }, "Farm profile"),
+    e("div", { className:"header" }, e("div", { className:"farmname" }, t("settings.title"))),
+
+    e("div", { className:"section-label" }, t("settings.farmProfile")),
     e("div", { className:"settings-block" },
-      e("div", { className:"field" }, e("label", null, "Farm name"),
+      e("div", { className:"field" }, e("label", null, t("settings.farmName")),
         e("input", { value: farmName, onChange: function(ev){ setFarmName(ev.target.value); }, onBlur: commitFarmName })),
-      e("div", { className:"field" }, e("label", null, "Crop type"),
+      e("div", { className:"field" }, e("label", null, t("settings.cropType")),
         e("select", { value: state.farm.cropType, disabled: true }, e("option", { value:"onion" }, "Onion")),
-        e("div", { className:"hint" }, "More crops can be added here later."))
+        e("div", { className:"hint" }, t("settings.moreCrops")))
     ),
 
-    e("div", { className:"section-label" }, "Log a new event"),
+    e("div", { className:"section-label" }, t("settings.logNewEvent")),
     e("div", { className:"settings-block" },
-      e("button", { className:"add-btn", onClick: onOpenAddEvent }, "+ Add new event")
+      e("button", { className:"add-btn", onClick: onOpenAddEvent }, t("settings.addNewEvent"))
     ),
 
-    e("div", { className:"section-label" }, "Field observations"),
+    e("div", { className:"section-label" }, t("settings.fieldObservations")),
     e("div", { className:"settings-block" },
-      e("button", { className:"add-btn", onClick: onOpenAddObservation }, "+ Add observation")
+      e("button", { className:"add-btn", onClick: onOpenAddObservation }, t("settings.addObservation"))
     ),
 
-    e("div", { className:"section-label" }, "Calculator"),
+    e("div", { className:"section-label" }, t("settings.calculator")),
     e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
       e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(true); } },
-        e("span", null, "Calculator"),
+        e("span", null, t("settings.calculator")),
         e("span", { className:"chev" }, "›"))
     ),
 
-    e("div", { className:"section-label" }, "Data & backup"),
+    e("div", { className:"section-label" }, t("settings.dataBackup")),
     e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
-      e("button", { className:"data-row", onClick: openExport }, e("span", null, "Export backup"), e("span", { className:"chev" }, "›")),
-      e("button", { className:"data-row", onClick: openRestore }, e("span", null, "Restore from backup"), e("span", { className:"chev" }, "›"))
+      e("button", { className:"data-row", onClick: openExport }, e("span", null, t("settings.exportBackup")), e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row", onClick: openRestore }, e("span", null, t("settings.restoreBackup")), e("span", { className:"chev" }, "›"))
+    ),
+
+    e("div", { className:"section-label" }, t("settings.language")),
+    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
+      e("button", { className:"data-row", onClick: function(){ setLangMenuOpen(true); } },
+        e("span", null, t("settings.languageRow") + ": " + (lang === "sw" ? "Kiswahili" : "English")),
+        e("span", { className:"chev" }, "›"))
+    ),
+
+    langMenuOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setLangMenuOpen(false); } },
+      e("div", { className:"modal" },
+        e("h2", null, t("settings.language")),
+        e("div", { className:"settings-block", style:{ padding:"4px 16px", margin:0 } },
+          e("button", { className:"data-row", onClick: function(){ onSetLang("en"); setLangMenuOpen(false); } },
+            e("span", null, "English"), lang === "en" ? e("span", { style:{ color:"var(--accent)", fontWeight:700 } }, "\u2713") : null),
+          e("button", { className:"data-row", onClick: function(){ onSetLang("sw"); setLangMenuOpen(false); } },
+            e("span", null, "Kiswahili"), lang === "sw" ? e("span", { style:{ color:"var(--accent)", fontWeight:700 } }, "\u2713") : null)
+        ),
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setLangMenuOpen(false); } }, t("common.close"))
+        )
+      )
     ),
 
     exportOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setExportOpen(false); } },
       e("div", { className:"modal" },
-        e("h2", null, "Export backup"),
-        e("div", { className:"hint", style:{ marginBottom:"10px" } }, "Tap the text to select it, then copy. Paste it into Notes or a message to yourself."),
+        e("h2", null, t("settings.exportBackupTitle")),
+        e("div", { className:"hint", style:{ marginBottom:"10px" } }, t("settings.exportHint")),
         e("textarea", {
           readOnly: true, value: buildBackupText(), className:"backup-text",
           onClick: function(ev){ ev.target.select(); }
         }),
         copyStatus && e("div", { className:"hint", style:{ marginTop:"8px" } }, copyStatus),
         e("div", { className:"modal-actions" },
-          e("button", { className:"btn btn-secondary", onClick: function(){ setExportOpen(false); } }, "Close"),
-          e("button", { className:"btn btn-primary", onClick: copyBackup }, "Copy to clipboard")
+          e("button", { className:"btn btn-secondary", onClick: function(){ setExportOpen(false); } }, t("common.close")),
+          e("button", { className:"btn btn-primary", onClick: copyBackup }, t("common.copyToClipboard"))
         )
       )
     ),
 
     restoreOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setRestoreOpen(false); } },
       e("div", { className:"modal" },
-        e("h2", null, restoreConfirming ? "Replace all current data?" : "Restore from backup"),
+        e("h2", null, restoreConfirming ? t("settings.replaceAllDataQ") : t("settings.restoreBackup")),
         !restoreConfirming
           ? e(React.Fragment, null,
-              e("textarea", { value: restoreText, className:"backup-text", placeholder: "Paste backup text here", onChange: function(ev){ setRestoreText(ev.target.value); } }),
+              e("textarea", { value: restoreText, className:"backup-text", placeholder: t("settings.pasteBackupHere"), onChange: function(ev){ setRestoreText(ev.target.value); } }),
               restoreError && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginTop:"8px" } }, restoreError),
               e("div", { className:"modal-actions" },
-                e("button", { className:"btn btn-secondary", onClick: function(){ setRestoreOpen(false); } }, "Cancel"),
-                e("button", { className:"btn btn-primary", onClick: validateAndConfirm }, "Continue")
+                e("button", { className:"btn btn-secondary", onClick: function(){ setRestoreOpen(false); } }, t("common.cancel")),
+                e("button", { className:"btn btn-primary", onClick: validateAndConfirm }, t("common.continue"))
               )
             )
           : e(React.Fragment, null,
-              e("div", { className:"hint" }, "This replaces everything on this phone with the pasted backup. Can't be undone."),
+              e("div", { className:"hint" }, t("settings.replaceEverythingWarning")),
               e("div", { className:"modal-actions" },
-                e("button", { className:"btn btn-secondary", onClick: function(){ setRestoreConfirming(false); } }, "Back"),
-                e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: doRestore }, "Replace data")
+                e("button", { className:"btn btn-secondary", onClick: function(){ setRestoreConfirming(false); } }, t("common.back")),
+                e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: doRestore }, t("settings.replaceData"))
               )
             )
       )
@@ -2346,17 +2923,17 @@ function SettingsScreen(props){
 
     calcMenuOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setCalcMenuOpen(false); } },
       e("div", { className:"modal" },
-        e("h2", null, "Calculator"),
+        e("h2", null, t("settings.calculator")),
         e("div", { className:"settings-block", style:{ padding:"4px 16px", margin:0 } },
           e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setAreaCalcOpen(true); } },
-            e("span", null, "Area calculator" + (areaBeds.length > 0 ? " · " + areaBeds.length + " plots" : "")), e("span", { className:"chev" }, "›")),
+            e("span", null, (lang === "sw" ? "Kikokotoo cha eneo" : "Area calculator") + (areaBeds.length > 0 ? " · " + areaBeds.length + " " + (lang === "sw" ? "mashamba" : "plots") : "")), e("span", { className:"chev" }, "›")),
           e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setSprayCalcOpen(true); } },
-            e("span", null, "Foliar / herbicide / insecticide"), e("span", { className:"chev" }, "›")),
+            e("span", null, lang === "sw" ? "Dawa ya majani / magugu / wadudu" : "Foliar / herbicide / insecticide"), e("span", { className:"chev" }, "›")),
           e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(false); setFertCalcOpen(true); } },
-            e("span", null, "Granular fertilizer"), e("span", { className:"chev" }, "›"))
+            e("span", null, lang === "sw" ? "Mbolea ya chembechembe" : "Granular fertilizer"), e("span", { className:"chev" }, "›"))
         ),
         e("div", { className:"modal-actions" },
-          e("button", { className:"btn btn-secondary", onClick: function(){ setCalcMenuOpen(false); } }, "Close")
+          e("button", { className:"btn btn-secondary", onClick: function(){ setCalcMenuOpen(false); } }, t("common.close"))
         )
       )
     ),
@@ -2386,6 +2963,11 @@ function App(){
   const [state, setState] = useState(loadState);
   const [tab, setTab] = useState("home");
   const [whyFocus, setWhyFocus] = useState(null);
+  const [lang, setLang] = useState(function(){
+    try{ return localStorage.getItem(LANG_KEY) || "en"; }catch(err){ return "en"; }
+  });
+  currentLang = lang; // must be set before this render's tree is built so every t() call below (and in child components called during this render) reflects it
+  useEffect(function(){ try{ localStorage.setItem(LANG_KEY, lang); }catch(err){} }, [lang]);
   useEffect(function(){ saveState(state); }, [state]);
   useEffect(function(){ document.body.style.overflow = tab === "home" ? "hidden" : ""; }, [tab]);
 
@@ -2532,38 +3114,38 @@ function App(){
       : tab === "why" ? e(WhyScreen, { state: state, focus: whyFocus })
       : e(SettingsScreen, { state: state, onUpdateFarm: updateFarm, onOpenAddEvent: function(){ openAddModal(); },
           onOpenAddObservation: openAddObsModal, onRestoreState: restoreState,
-          onAddAreaBed: addAreaBed, onRemoveAreaBed: removeAreaBed }),
+          onAddAreaBed: addAreaBed, onRemoveAreaBed: removeAreaBed, lang: lang, onSetLang: setLang }),
 
     modalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setModalOpen(false); } },
       e("div", { className:"modal" },
-        e("h2", null, editingId ? "Edit event" : "Add event"),
-        e("div", { className:"field" }, e("label", null, "Event type"),
+        e("h2", null, editingId ? t("modal.editEvent") : t("modal.addEvent")),
+        e("div", { className:"field" }, e("label", null, t("field.eventType")),
           e("select", { value: formCategory, onChange: function(ev){ setFormCategory(ev.target.value); } },
-            CATEGORIES.map(function(c){ return e("option", { value:c.id, key:c.id }, c.label + (c.kind==="milestone" ? " (timeline)" : "")); })
+            CATEGORIES.map(function(c){ return e("option", { value:c.id, key:c.id }, categoryLabel(c.id) + (c.kind==="milestone" ? " (" + t("field.timeline") + ")" : "")); })
           )
         ),
-        formCategory === "spray" && e("div", { className:"field" }, e("label", null, "Spray type"),
+        formCategory === "spray" && e("div", { className:"field" }, e("label", null, t("field.sprayType")),
           e("select", { value: formSprayType, onChange: function(ev){ setFormSprayType(ev.target.value); } },
-            SPRAY_TYPES.map(function(t){ return e("option", { value:t, key:t }, t); })
+            SPRAY_TYPES.map(function(st){ return e("option", { value:st, key:st }, optionLabel(st)); })
           )
         ),
-        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Fertilizer type"),
+        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, t("field.fertilizerType")),
           e("select", { value: formFertilizerType, onChange: function(ev){ setFormFertilizerType(ev.target.value); } },
-            FERTILIZER_TYPES.map(function(t){ return e("option", { value:t, key:t }, t); })
+            FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); })
           )
         ),
-        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, "Quantity (kg)"),
+        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, t("field.quantityKg")),
           e("input", { type:"number", min:"0", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
         ),
-        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, "Outcome"),
+        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, t("field.outcome")),
           e("select", { value: formOutcome, onChange: function(ev){ setFormOutcome(ev.target.value); } },
-            DISPOSITION_OPTIONS.map(function(o){ return e("option", { value:o, key:o }, o); })
+            DISPOSITION_OPTIONS.map(function(o){ return e("option", { value:o, key:o }, optionLabel(o)); })
           )
         ),
-        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, "Quantity (gunia)"),
+        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, t("field.quantityGunia")),
           e("input", { type:"number", min:"0", inputMode:"numeric", value: formQuantityGunia, placeholder: "e.g. 6", onChange: function(ev){ setFormQuantityGunia(ev.target.value); } })
         ),
-        formCategory === "stored_sold" && formOutcome === "Sold" && e("div", { className:"field" }, e("label", null, "Price, Tsh (optional)"),
+        formCategory === "stored_sold" && formOutcome === "Sold" && e("div", { className:"field" }, e("label", null, t("field.priceTsh")),
           e("input", { type:"number", min:"0", inputMode:"decimal", value: formPriceTsh, placeholder: "e.g. 450000", onChange: function(ev){ setFormPriceTsh(ev.target.value); } })
         ),
         formCategory === "transplanting" && e("div", { className:"field" },
@@ -2573,91 +3155,91 @@ function App(){
               setFormMultiDay(checked);
               if(checked && formEndDate < formDate) setFormEndDate(formDate);
             } }),
-            "Did transplanting span multiple days?"
+            t("field.transplantSpanQ")
           ),
-          e("div", { className:"hint" }, "If yes, each day's age is tracked using the finish date, not an average, so timing advice stays accurate for the whole field.")
+          e("div", { className:"hint" }, t("field.transplantSpanHint"))
         ),
-        e("div", { className:"field" }, e("label", null, formCategory === "transplanting" && formMultiDay ? "Start date" : "Date"),
+        e("div", { className:"field" }, e("label", null, formCategory === "transplanting" && formMultiDay ? t("field.startDate") : t("field.date")),
           e("input", { type:"date", value: formDate, onChange: function(ev){ setFormDate(ev.target.value); } })),
-        formCategory === "transplanting" && formMultiDay && e("div", { className:"field" }, e("label", null, "Finish date"),
+        formCategory === "transplanting" && formMultiDay && e("div", { className:"field" }, e("label", null, t("field.finishDate")),
           e("input", { type:"date", min: formDate, value: formEndDate, onChange: function(ev){ setFormEndDate(ev.target.value); } })),
 
         isRichCategory
-          ? e("div", { className:"field" }, e("label", null, "Observation"),
+          ? e("div", { className:"field" }, e("label", null, t("field.observation")),
               e("textarea", {
                 value: formObservation,
-                placeholder: formCategory === "spray" ? "e.g. thrips on leaves, north side" : "e.g. slight yellowing before application",
+                placeholder: formCategory === "spray" ? t("field.sprayObsPlaceholder") : t("field.fertObsPlaceholder"),
                 onChange: function(ev){ setFormObservation(ev.target.value); }
               }),
-              e("div", { className:"hint" }, "Worth recording what you noticed here every time."))
+              e("div", { className:"hint" }, t("field.worthRecording")))
           : formCategory === "stored_sold"
           ? null
-          : e("div", { className:"field" }, e("label", null, "Note (optional)"),
+          : e("div", { className:"field" }, e("label", null, t("field.noteOptional")),
               e("input", { value: formLabel, placeholder: categoryLabel(formCategory), onChange: function(ev){ setFormLabel(ev.target.value); } })),
 
         e("div", { className:"modal-actions" },
-          e("button", { className:"btn btn-secondary", onClick: function(){ setModalOpen(false); } }, "Cancel"),
-          e("button", { className:"btn btn-primary", onClick: submitForm }, editingId ? "Save" : "Add")
+          e("button", { className:"btn btn-secondary", onClick: function(){ setModalOpen(false); } }, t("common.cancel")),
+          e("button", { className:"btn btn-primary", onClick: submitForm }, editingId ? t("common.save") : t("common.add"))
         )
       )
     ),
 
     confirmDeleteId && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setConfirmDeleteId(null); } },
       e("div", { className:"modal" },
-        e("h2", null, "Delete this event?"),
-        e("div", { className:"hint" }, "This can't be undone."),
+        e("h2", null, t("modal.deleteEventQ")),
+        e("div", { className:"hint" }, t("common.cantBeUndone")),
         e("div", { className:"modal-actions" },
-          e("button", { className:"btn btn-secondary", onClick: function(){ setConfirmDeleteId(null); } }, "Cancel"),
-          e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ deleteEvent(confirmDeleteId); setConfirmDeleteId(null); } }, "Delete")
+          e("button", { className:"btn btn-secondary", onClick: function(){ setConfirmDeleteId(null); } }, t("common.cancel")),
+          e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ deleteEvent(confirmDeleteId); setConfirmDeleteId(null); } }, t("common.delete"))
         )
       )
     ),
 
     obsModalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setObsModalOpen(false); } },
       e("div", { className:"modal" },
-        e("h2", null, obsEditingId ? "Edit observation" : "Add observation"),
-        e("div", { className:"hint", style:{ marginBottom:"12px" } }, "Fill in only what you actually saw today. Skip the rest."),
-        e("div", { className:"field" }, e("label", null, "Date"),
+        e("h2", null, obsEditingId ? t("modal.editObservation") : t("modal.addObservation")),
+        e("div", { className:"hint", style:{ marginBottom:"12px" } }, t("field.fillOnlyWhatSeen")),
+        e("div", { className:"field" }, e("label", null, t("field.date")),
           e("input", { type:"date", value: obsDate, onChange: function(ev){ setObsDate(ev.target.value); } })),
-        e(OptionalSelect, { label:"Growth stage", value: obsStage, onChange: setObsStage, options: OBS_STAGE_OPTIONS }),
-        e("div", { className:"field" }, e("label", null, "Leaf count (optional)"),
+        e(OptionalSelect, { label:t("field.growthStage"), value: obsStage, onChange: setObsStage, options: OBS_STAGE_OPTIONS }),
+        e("div", { className:"field" }, e("label", null, t("field.leafCount")),
           e("input", { type:"number", min:"0", inputMode:"numeric", value: obsLeafCount, placeholder:"e.g. 4", onChange: function(ev){ setObsLeafCount(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, "Plant height, cm (optional)"),
+        e("div", { className:"field" }, e("label", null, t("field.plantHeight")),
           e("input", { type:"number", min:"0", inputMode:"decimal", value: obsHeightCm, placeholder:"e.g. 15", onChange: function(ev){ setObsHeightCm(ev.target.value); } })),
-        e(OptionalSelect, { label:"Soil moisture", value: obsMoisture, onChange: setObsMoisture, options: OBS_MOISTURE_OPTIONS }),
-        e(OptionalSelect, { label:"Leaf colour", value: obsLeafColor, onChange: setObsLeafColor, options: OBS_LEAF_COLOR_OPTIONS }),
-        e(OptionalSelect, { label:"Pests seen", value: obsPest, onChange: setObsPest, options: OBS_PEST_OPTIONS }),
-        e(OptionalSelect, { label:"Disease symptoms", value: obsDisease, onChange: setObsDisease, options: OBS_DISEASE_OPTIONS }),
-        e(OptionalSelect, { label:"Tops / bulb status", value: obsTops, onChange: setObsTops, options: OBS_TOPS_OPTIONS }),
-        e(OptionalSelect, { label:"Curing / neck condition", value: obsCuring, onChange: setObsCuring, options: OBS_CURING_OPTIONS }),
-        e(OptionalSelect, { label:"Sunlight effect after mulch removal", value: obsSunlight, onChange: setObsSunlight, options: OBS_SUNLIGHT_OPTIONS }),
-        e(OptionalSelect, { label:"Recent weather", value: obsWeather, onChange: setObsWeather, options: OBS_WEATHER_OPTIONS }),
-        e("div", { className:"field" }, e("label", null, "Notes (optional)"),
-          e("textarea", { value: obsNotes, placeholder:"Anything else worth remembering", onChange: function(ev){ setObsNotes(ev.target.value); } })),
+        e(OptionalSelect, { label:t("field.soilMoisture"), value: obsMoisture, onChange: setObsMoisture, options: OBS_MOISTURE_OPTIONS }),
+        e(OptionalSelect, { label:t("field.leafColour"), value: obsLeafColor, onChange: setObsLeafColor, options: OBS_LEAF_COLOR_OPTIONS }),
+        e(OptionalSelect, { label:t("field.pestsSeen"), value: obsPest, onChange: setObsPest, options: OBS_PEST_OPTIONS }),
+        e(OptionalSelect, { label:t("field.diseaseSymptoms"), value: obsDisease, onChange: setObsDisease, options: OBS_DISEASE_OPTIONS }),
+        e(OptionalSelect, { label:t("field.topsStatus"), value: obsTops, onChange: setObsTops, options: OBS_TOPS_OPTIONS }),
+        e(OptionalSelect, { label:t("field.curingStatus"), value: obsCuring, onChange: setObsCuring, options: OBS_CURING_OPTIONS }),
+        e(OptionalSelect, { label:t("field.sunlightEffect"), value: obsSunlight, onChange: setObsSunlight, options: OBS_SUNLIGHT_OPTIONS }),
+        e(OptionalSelect, { label:t("field.weather"), value: obsWeather, onChange: setObsWeather, options: OBS_WEATHER_OPTIONS }),
+        e("div", { className:"field" }, e("label", null, t("field.notes")),
+          e("textarea", { value: obsNotes, placeholder:t("field.notesPlaceholder"), onChange: function(ev){ setObsNotes(ev.target.value); } })),
         e("div", { className:"modal-actions" },
-          e("button", { className:"btn btn-secondary", onClick: function(){ setObsModalOpen(false); } }, "Cancel"),
-          e("button", { className:"btn btn-primary", onClick: submitObsForm }, obsEditingId ? "Save" : "Add")
+          e("button", { className:"btn btn-secondary", onClick: function(){ setObsModalOpen(false); } }, t("common.cancel")),
+          e("button", { className:"btn btn-primary", onClick: submitObsForm }, obsEditingId ? t("common.save") : t("common.add"))
         )
       )
     ),
 
     obsConfirmDeleteId && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setObsConfirmDeleteId(null); } },
       e("div", { className:"modal" },
-        e("h2", null, "Delete this observation?"),
-        e("div", { className:"hint" }, "This can't be undone."),
+        e("h2", null, t("modal.deleteObservationQ")),
+        e("div", { className:"hint" }, t("common.cantBeUndone")),
         e("div", { className:"modal-actions" },
-          e("button", { className:"btn btn-secondary", onClick: function(){ setObsConfirmDeleteId(null); } }, "Cancel"),
-          e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ deleteObservation(obsConfirmDeleteId); setObsConfirmDeleteId(null); } }, "Delete")
+          e("button", { className:"btn btn-secondary", onClick: function(){ setObsConfirmDeleteId(null); } }, t("common.cancel")),
+          e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: function(){ deleteObservation(obsConfirmDeleteId); setObsConfirmDeleteId(null); } }, t("common.delete"))
         )
       )
     ),
 
     e("div", { className:"bottom-nav" },
       e("div", { className:"bottom-nav-inner" },
-        e("button", { className:"nav-btn" + (tab==="home" ? " active" : ""), onClick: function(){ setTab("home"); } }, IconHome(tab==="home"), e("span", null, "Home")),
-        e("button", { className:"nav-btn" + (tab==="why" ? " active" : ""), onClick: function(){ setTab("why"); } }, IconWhy(tab==="why"), e("span", null, "Why")),
-        e("button", { className:"nav-btn" + (tab==="history" ? " active" : ""), onClick: function(){ setTab("history"); } }, IconHistory(tab==="history"), e("span", null, "History")),
-        e("button", { className:"nav-btn" + (tab==="settings" ? " active" : ""), onClick: function(){ setTab("settings"); } }, IconSettings(tab==="settings"), e("span", null, "Settings"))
+        e("button", { className:"nav-btn" + (tab==="home" ? " active" : ""), onClick: function(){ setTab("home"); } }, IconHome(tab==="home"), e("span", null, t("nav.home"))),
+        e("button", { className:"nav-btn" + (tab==="why" ? " active" : ""), onClick: function(){ setTab("why"); } }, IconWhy(tab==="why"), e("span", null, t("nav.why"))),
+        e("button", { className:"nav-btn" + (tab==="history" ? " active" : ""), onClick: function(){ setTab("history"); } }, IconHistory(tab==="history"), e("span", null, t("nav.history"))),
+        e("button", { className:"nav-btn" + (tab==="settings" ? " active" : ""), onClick: function(){ setTab("settings"); } }, IconSettings(tab==="settings"), e("span", null, t("nav.settings")))
       )
     )
   );
