@@ -286,14 +286,124 @@
 
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script type="module">
+  // Firebase Realtime Database — used only for the optional "Shared Farm" feature (Settings).
+  // The app works standalone on localStorage with no Firebase involvement at all if the user
+  // never sets up a shared farm. This config is safe to be public in client-side code; real
+  // access control comes from the Realtime Database security rules, not from hiding this.
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-app.js";
+  import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/12.17.0/firebase-database.js";
+  const firebaseConfig = {
+    apiKey: "AIzaSyCB4J_OC_JR7XsleLkU638Oe0J-Xw7A8BI",
+    authDomain: "japhe-farm.firebaseapp.com",
+    databaseURL: "https://japhe-farm-default-rtdb.firebaseio.com",
+    projectId: "japhe-farm",
+    storageBucket: "japhe-farm.firebasestorage.app",
+    messagingSenderId: "555314709584",
+    appId: "1:555314709584:web:86b440e7cf850c9b45fd55"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  window.__fb = { ref, onValue, set, get, db };
+  window.dispatchEvent(new Event("firebase-ready"));
+</script>
 <script>
 const e = React.createElement;
 const useState = React.useState;
 const useEffect = React.useEffect;
 const useMemo = React.useMemo;
+const useRef = React.useRef;
 
 const STORAGE_KEY = "japhe_farm_v1";
 const LANG_KEY = "japhe_farm_lang";
+const SYNC_KEY = "japhe_farm_sync_v1";
+
+// --- Shared farm sync (optional feature) ----------------------------------------------------
+// Kept entirely separate from the main data blob (STORAGE_KEY) and its migration logic, so a
+// user who never touches "Shared Farm" in Settings is completely unaffected by any of this.
+// Design: whole-state, last-write-wins sync via one Realtime Database path per farm code.
+// `updatedAt` is a plain client timestamp (not serverTimestamp()) so it can be compared
+// synchronously the moment new data arrives — acceptable at this app's scale (a couple of
+// people logging a few events a day), where exact clock sync isn't worth the complexity of a
+// server-resolved timestamp. `needsSync` is the durable "this device has edits Firebase
+// doesn't have yet" flag: it lives in localStorage (not memory) specifically so it survives
+// the app being fully closed while offline — Realtime Database's own offline write queue only
+// lasts for the current page session, which isn't enough for a farm with patchy signal where
+// the app may be closed and reopened many times before reconnecting.
+function loadSyncMeta(){
+  try{
+    const raw = localStorage.getItem(SYNC_KEY);
+    if(!raw) return { farmCode:null, updatedAt:0, needsSync:false };
+    const parsed = JSON.parse(raw);
+    return { farmCode: parsed.farmCode || null, updatedAt: parsed.updatedAt || 0, needsSync: !!parsed.needsSync };
+  }catch(err){ return { farmCode:null, updatedAt:0, needsSync:false }; }
+}
+function saveSyncMeta(meta){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(meta)); }catch(err){} }
+
+// A short, easy-to-read-aloud code — avoids visually ambiguous characters (0/O, 1/I/L) since
+// this is meant to be shared with a family member over a phone call, not copy-pasted.
+const FARM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function generateFarmCode(){
+  let code = "";
+  for(let i = 0; i < 6; i++){ code += FARM_CODE_CHARS[Math.floor(Math.random() * FARM_CODE_CHARS.length)]; }
+  return code;
+}
+
+// Resolves once the Firebase module script (loaded separately, see <head>) has finished
+// initializing. Needed because that script is type="module" (deferred) while this one is a
+// classic script, so window.__fb may not exist yet the first time this file runs.
+function getFirebase(){
+  return new Promise(function(resolve){
+    if(window.__fb) return resolve(window.__fb);
+    window.addEventListener("firebase-ready", function(){ resolve(window.__fb); }, { once:true });
+  });
+}
+
+// Checks the shared farm's current updatedAt before writing, so a device pushing slightly
+// stale data (e.g. right after reconnecting, before its own subscription has caught up) can
+// never clobber a genuinely newer edit from the other device. If remote is already newer, this
+// deliberately does nothing — the caller's own onValue subscription will pick up that newer
+// remote version on its own moments later.
+function fbPushState(farmCode, state, updatedAt){
+  return getFirebase().then(function(fb){
+    const path = fb.ref(fb.db, "farms/" + farmCode);
+    return fb.get(path).then(function(snap){
+      const existing = snap.val();
+      if(existing && existing.updatedAt && existing.updatedAt > updatedAt) return { skipped:true };
+      return fb.set(path, {
+        farm: state.farm, events: state.events, observations: state.observations || [],
+        areaBeds: state.areaBeds || [], updatedAt: updatedAt
+      }).then(function(){ return { skipped:false }; });
+    });
+  });
+}
+function fbFetchState(farmCode){
+  return getFirebase().then(function(fb){
+    return fb.get(fb.ref(fb.db, "farms/" + farmCode)).then(function(snap){ return snap.val(); });
+  });
+}
+// onData is called every time the shared farm's data changes, including immediately with
+// whatever's already there — this is how the OTHER device's edits arrive on this one. Returns
+// an unsubscribe function.
+function fbSubscribe(farmCode, onData){
+  let unsub = null, cancelled = false;
+  getFirebase().then(function(fb){
+    if(cancelled) return;
+    unsub = fb.onValue(fb.ref(fb.db, "farms/" + farmCode), function(snap){ onData(snap.val()); });
+  });
+  return function(){ cancelled = true; if(unsub) unsub(); };
+}
+// Firebase's own connectivity signal (true only when actually connected to the database, not
+// just "the phone thinks it has signal") — the trigger for retrying any queued offline sync.
+// Returns an unsubscribe function.
+function fbSubscribeConnectivity(onChange){
+  let unsub = null, cancelled = false;
+  getFirebase().then(function(fb){
+    if(cancelled) return;
+    unsub = fb.onValue(fb.ref(fb.db, ".info/connected"), function(snap){ onChange(!!snap.val()); });
+  });
+  return function(){ cancelled = true; if(unsub) unsub(); };
+}
 
 // --- Language / translation ---------------------------------------------------------------
 // Plain module-level dictionary + a single t() reader, deliberately not React Context: this
@@ -432,7 +542,23 @@ const translations = {
     "settings.exportBackupTitle": "Export backup", "settings.exportHint": "Tap the text to select it, then copy. Paste it into Notes or a message to yourself.",
     "common.copyToClipboard": "Copy to clipboard", "settings.replaceAllDataQ": "Replace all current data?",
     "settings.pasteBackupHere": "Paste backup text here", "settings.replaceEverythingWarning": "This replaces everything on this phone with the pasted backup. Can't be undone.",
-    "settings.replaceData": "Replace data"
+    "settings.replaceData": "Replace data",
+
+    "settings.sharedFarm": "Shared Farm", "settings.sharedFarmNotSet": "Not set up",
+    "settings.createSharedFarm": "Create a new shared farm", "settings.joinSharedFarm": "Join an existing shared farm",
+    "settings.leaveSharedFarm": "Leave shared farm",
+    "settings.createConfirmQ": "Create a shared farm from your current data?",
+    "settings.createConfirmHint": "Your current farm data becomes the starting point. You'll get a code to share with whoever else should see and edit it — like your mother's phone.",
+    "settings.joinHint": "Enter the code from the phone that already has this farm set up. This replaces your data on this phone with what's already in that shared farm.",
+    "settings.enterCode": "Enter the code",
+    "settings.leaveConfirmHint": "This stops syncing on this phone. Your data here stays exactly as it is, it just won't send or receive further updates.",
+    "settings.farmCreatedTitle": "Shared farm created",
+    "settings.farmCreatedHint": "Share this code with whoever else should see and edit this farm. They'll enter it under Join an existing shared farm.",
+    "settings.yourFarmCode": "Your farm code",
+    "settings.accessWarning": "Anyone with this code can see and change this farm's data.",
+    "settings.syncActionFailed": "Something went wrong. Check your connection and try again.",
+    "settings.farmCodeNotFound": "No shared farm found with that code. Check it and try again.",
+    "settings.syncedNow": "Synced", "settings.syncPending": "Waiting to sync\u2026", "settings.creating": "Creating\u2026", "settings.joining": "Joining\u2026"
   },
   sw: {
     "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
@@ -559,7 +685,23 @@ const translations = {
     "settings.exportBackupTitle": "Toa nakala rudufu", "settings.exportHint": "Gusa maandishi kuyachagua, kisha nakili. Bandika kwenye Notes au ujumbe kwako mwenyewe.",
     "common.copyToClipboard": "Nakili", "settings.replaceAllDataQ": "Badilisha taarifa zote za sasa?",
     "settings.pasteBackupHere": "Bandika maandishi ya nakala rudufu hapa", "settings.replaceEverythingWarning": "Hii itabadilisha kila kitu kwenye simu hii na nakala rudufu uliyobandika. Huwezi kurudisha nyuma.",
-    "settings.replaceData": "Badilisha taarifa"
+    "settings.replaceData": "Badilisha taarifa",
+
+    "settings.sharedFarm": "Shamba la Pamoja", "settings.sharedFarmNotSet": "Bado hajaanzishwa",
+    "settings.createSharedFarm": "Anzisha shamba la pamoja jipya", "settings.joinSharedFarm": "Jiunge na shamba la pamoja lililopo",
+    "settings.leaveSharedFarm": "Ondoka kwenye shamba la pamoja",
+    "settings.createConfirmQ": "Anzisha shamba la pamoja kutoka taarifa zako za sasa?",
+    "settings.createConfirmHint": "Taarifa zako za sasa zitakuwa mwanzo. Utapata msimbo wa kushiriki na yeyote mwingine anayepaswa kuona na kubadilisha, kama simu ya mama yako.",
+    "settings.joinHint": "Weka msimbo kutoka simu ambayo tayari ina shamba hili. Hii itabadilisha taarifa zako kwenye simu hii na zile zilizopo kwenye shamba la pamoja.",
+    "settings.enterCode": "Weka msimbo",
+    "settings.leaveConfirmHint": "Hii itasimamisha usawazishaji kwenye simu hii. Taarifa zako hapa zitabaki kama zilivyo, hazitatuma wala kupokea masasisho tena.",
+    "settings.farmCreatedTitle": "Shamba la pamoja limeanzishwa",
+    "settings.farmCreatedHint": "Shiriki msimbo huu na yeyote mwingine anayepaswa kuona na kubadilisha shamba hili. Ataweka kwenye Jiunge na shamba la pamoja lililopo.",
+    "settings.yourFarmCode": "Msimbo wa shamba lako",
+    "settings.accessWarning": "Yeyote mwenye msimbo huu anaweza kuona na kubadilisha taarifa za shamba hili.",
+    "settings.syncActionFailed": "Kuna hitilafu imetokea. Hakikisha muunganisho wako kisha jaribu tena.",
+    "settings.farmCodeNotFound": "Hakuna shamba la pamoja lililopatikana kwa msimbo huo. Hakikisha kisha jaribu tena.",
+    "settings.syncedNow": "Imesawazishwa", "settings.syncPending": "Inasubiri kusawazishwa\u2026", "settings.creating": "Inaanzishwa\u2026", "settings.joining": "Inajiunga\u2026"
   }
 };
 function t(key){
@@ -2751,6 +2893,8 @@ function SettingsScreen(props){
   const state = props.state;
   const onUpdateFarm = props.onUpdateFarm, onOpenAddEvent = props.onOpenAddEvent, onOpenAddObservation = props.onOpenAddObservation;
   const onRestoreState = props.onRestoreState;
+  const syncMeta = props.syncMeta || { farmCode:null, needsSync:false };
+  const onCreateSharedFarm = props.onCreateSharedFarm, onJoinSharedFarm = props.onJoinSharedFarm, onLeaveSharedFarm = props.onLeaveSharedFarm;
 
   const [farmName, setFarmName] = useState(state.farm.name);
   useEffect(function(){ setFarmName(state.farm.name); }, [state.farm.name]);
@@ -2770,6 +2914,36 @@ function SettingsScreen(props){
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const areaBeds = state.areaBeds || [];
   const totalBedArea = areaBeds.reduce(function(sum, b){ return sum + b.area; }, 0);
+
+  // Shared Farm section — create/join/leave, all via a single modal whose contents switch on
+  // sharedFarmMode. Kept in one modal (like the calc menu) rather than three separate ones,
+  // since only one of these is ever relevant at a time.
+  const [sharedFarmMenuOpen, setSharedFarmMenuOpen] = useState(false);
+  const [sharedFarmMode, setSharedFarmMode] = useState(null); // null | "create-confirm" | "create-result" | "join" | "leave-confirm"
+  const [sharedFarmBusy, setSharedFarmBusy] = useState(false);
+  const [sharedFarmError, setSharedFarmError] = useState("");
+  const [joinCodeInput, setJoinCodeInput] = useState("");
+  const [createdCode, setCreatedCode] = useState("");
+
+  function openSharedFarmMenu(){ setSharedFarmError(""); setSharedFarmMode(null); setJoinCodeInput(""); setSharedFarmMenuOpen(true); }
+  function doCreate(){
+    setSharedFarmBusy(true); setSharedFarmError("");
+    onCreateSharedFarm().then(function(code){
+      setCreatedCode(code); setSharedFarmMode("create-result"); setSharedFarmBusy(false);
+    }).catch(function(){ setSharedFarmError(t("settings.syncActionFailed")); setSharedFarmBusy(false); });
+  }
+  function doJoin(){
+    const code = joinCodeInput.trim().toUpperCase();
+    if(!code){ return; }
+    setSharedFarmBusy(true); setSharedFarmError("");
+    onJoinSharedFarm(code).then(function(result){
+      setSharedFarmBusy(false);
+      if(!result.ok){ setSharedFarmError(t("settings.farmCodeNotFound")); return; }
+      setSharedFarmMenuOpen(false);
+    }).catch(function(){ setSharedFarmError(t("settings.syncActionFailed")); setSharedFarmBusy(false); });
+  }
+  function doLeave(){ onLeaveSharedFarm(); setSharedFarmMenuOpen(false); }
+
 
   function buildBackupText(){
     return JSON.stringify({
@@ -2859,6 +3033,76 @@ function SettingsScreen(props){
     e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
       e("button", { className:"data-row", onClick: openExport }, e("span", null, t("settings.exportBackup")), e("span", { className:"chev" }, "›")),
       e("button", { className:"data-row", onClick: openRestore }, e("span", null, t("settings.restoreBackup")), e("span", { className:"chev" }, "›"))
+    ),
+
+    e("div", { className:"section-label" }, t("settings.sharedFarm")),
+    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
+      e("button", { className:"data-row", onClick: openSharedFarmMenu },
+        e("span", null, syncMeta.farmCode
+          ? (t("settings.yourFarmCode") + ": " + syncMeta.farmCode)
+          : (t("settings.sharedFarm") + ": " + t("settings.sharedFarmNotSet"))),
+        e("span", { className:"chev" }, "›"))
+    ),
+
+    sharedFarmMenuOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setSharedFarmMenuOpen(false); } },
+      e("div", { className:"modal" },
+        !sharedFarmMode && e(React.Fragment, null,
+          e("h2", null, t("settings.sharedFarm")),
+          syncMeta.farmCode && e("div", { className:"hint", style:{ marginBottom:"12px" } }, t("settings.yourFarmCode") + ": " + syncMeta.farmCode),
+          e("div", { className:"settings-block", style:{ padding:"4px 16px", margin:0 } },
+            !syncMeta.farmCode && e("button", { className:"data-row", onClick: function(){ setSharedFarmMode("create-confirm"); } },
+              e("span", null, t("settings.createSharedFarm")), e("span", { className:"chev" }, "›")),
+            !syncMeta.farmCode && e("button", { className:"data-row", onClick: function(){ setSharedFarmMode("join"); } },
+              e("span", null, t("settings.joinSharedFarm")), e("span", { className:"chev" }, "›")),
+            syncMeta.farmCode && e("button", { className:"data-row", onClick: function(){ setSharedFarmMode("leave-confirm"); } },
+              e("span", null, t("settings.leaveSharedFarm")), e("span", { className:"chev" }, "›"))
+          ),
+          e("div", { className:"modal-actions" },
+            e("button", { className:"btn btn-secondary", onClick: function(){ setSharedFarmMenuOpen(false); } }, t("common.close"))
+          )
+        ),
+
+        sharedFarmMode === "create-confirm" && e(React.Fragment, null,
+          e("h2", null, t("settings.createConfirmQ")),
+          e("div", { className:"hint", style:{ marginBottom:"10px" } }, t("settings.createConfirmHint")),
+          sharedFarmError && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"10px" } }, sharedFarmError),
+          e("div", { className:"modal-actions" },
+            e("button", { className:"btn btn-secondary", onClick: function(){ setSharedFarmMode(null); } }, t("common.back")),
+            e("button", { className:"btn btn-primary", onClick: doCreate }, sharedFarmBusy ? t("settings.creating") : t("common.continue"))
+          )
+        ),
+
+        sharedFarmMode === "create-result" && e(React.Fragment, null,
+          e("h2", null, t("settings.farmCreatedTitle")),
+          e("div", { className:"hint", style:{ marginBottom:"10px" } }, t("settings.farmCreatedHint")),
+          e("div", { style:{ fontSize:"28px", fontWeight:700, letterSpacing:"0.08em", textAlign:"center", padding:"14px", background:"var(--bg-elevated)", borderRadius:"12px", marginBottom:"10px" } }, createdCode),
+          e("div", { className:"hint", style:{ color:"var(--status-warning)", marginBottom:"10px" } }, t("settings.accessWarning")),
+          e("div", { className:"modal-actions" },
+            e("button", { className:"btn btn-primary", onClick: function(){ setSharedFarmMenuOpen(false); } }, t("common.done"))
+          )
+        ),
+
+        sharedFarmMode === "join" && e(React.Fragment, null,
+          e("h2", null, t("settings.joinSharedFarm")),
+          e("div", { className:"hint", style:{ marginBottom:"10px" } }, t("settings.joinHint")),
+          e("div", { className:"field" }, e("label", null, t("settings.enterCode")),
+            e("input", { value: joinCodeInput, style:{ textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700 }, onChange: function(ev){ setJoinCodeInput(ev.target.value); } })),
+          sharedFarmError && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginTop:"6px", marginBottom:"10px" } }, sharedFarmError),
+          e("div", { className:"modal-actions" },
+            e("button", { className:"btn btn-secondary", onClick: function(){ setSharedFarmMode(null); } }, t("common.back")),
+            e("button", { className:"btn btn-primary", onClick: doJoin }, sharedFarmBusy ? t("settings.joining") : t("common.continue"))
+          )
+        ),
+
+        sharedFarmMode === "leave-confirm" && e(React.Fragment, null,
+          e("h2", null, t("settings.leaveSharedFarm")),
+          e("div", { className:"hint", style:{ marginBottom:"10px" } }, t("settings.leaveConfirmHint")),
+          e("div", { className:"modal-actions" },
+            e("button", { className:"btn btn-secondary", onClick: function(){ setSharedFarmMode(null); } }, t("common.back")),
+            e("button", { className:"btn btn-primary", style:{background:"var(--status-danger)", color:"#fff"}, onClick: doLeave }, t("settings.leaveSharedFarm"))
+          )
+        )
+      )
     ),
 
     e("div", { className:"section-label" }, t("settings.language")),
@@ -2970,6 +3214,105 @@ function App(){
   useEffect(function(){ try{ localStorage.setItem(LANG_KEY, lang); }catch(err){} }, [lang]);
   useEffect(function(){ saveState(state); }, [state]);
   useEffect(function(){ document.body.style.overflow = tab === "home" ? "hidden" : ""; }, [tab]);
+
+  // --- Shared farm sync (optional) -----------------------------------------------------------
+  const [syncMeta, setSyncMeta] = useState(loadSyncMeta);
+  const stateRef = useRef(state);
+  useEffect(function(){ stateRef.current = state; }, [state]);
+  const skipNextSyncPush = useRef(false); // set right before a remote-driven setState, so that change doesn't get pushed straight back out
+  const isFirstStateEffect = useRef(true); // the very first [state] effect run is just the initial mount, never a real edit — must not be treated as one, or every app-open would race the other device's last edit with a meaningless "nothing changed" timestamp
+
+  // Subscribe to the shared farm's live data, and to Firebase's connectivity signal so any
+  // edit made while offline gets pushed the moment a connection is available. Re-subscribes
+  // whenever the farm code changes (create/join/leave), cleanly unsubscribing the old one.
+  useEffect(function(){
+    if(!syncMeta.farmCode) return;
+    const code = syncMeta.farmCode;
+    const unsubData = fbSubscribe(code, function(remote){
+      if(!remote) return;
+      setSyncMeta(function(prevMeta){
+        if(prevMeta.farmCode !== code) return prevMeta; // a stale callback from a farm we've since left
+        if(remote.updatedAt && remote.updatedAt > prevMeta.updatedAt){
+          skipNextSyncPush.current = true;
+          setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [] });
+          const nextMeta = { farmCode: code, updatedAt: remote.updatedAt, needsSync:false };
+          saveSyncMeta(nextMeta);
+          return nextMeta;
+        }
+        return prevMeta;
+      });
+    });
+    const unsubConn = fbSubscribeConnectivity(function(isConnected){
+      if(!isConnected) return;
+      setSyncMeta(function(prevMeta){
+        if(prevMeta.farmCode === code && prevMeta.needsSync){
+          fbPushState(code, stateRef.current, prevMeta.updatedAt).then(function(){
+            setSyncMeta(function(m){
+              if(m.farmCode !== code || m.updatedAt !== prevMeta.updatedAt) return m; // superseded by a newer edit or a farm switch since this push started
+              const cleared = Object.assign({}, m, { needsSync:false });
+              saveSyncMeta(cleared);
+              return cleared;
+            });
+          }).catch(function(){});
+        }
+        return prevMeta;
+      });
+    });
+    return function(){ unsubData(); unsubConn(); };
+  }, [syncMeta.farmCode]);
+
+  // Push every genuine local edit to the shared farm (if one is set up). Skips the initial
+  // mount (not a real edit) and skips whenever this exact state change came FROM the remote
+  // subscription above (nothing new to send back).
+  useEffect(function(){
+    if(isFirstStateEffect.current){ isFirstStateEffect.current = false; return; }
+    if(skipNextSyncPush.current){ skipNextSyncPush.current = false; return; }
+    setSyncMeta(function(prevMeta){
+      const nextMeta = { farmCode: prevMeta.farmCode, updatedAt: Date.now(), needsSync: !!prevMeta.farmCode };
+      saveSyncMeta(nextMeta);
+      if(prevMeta.farmCode){
+        fbPushState(prevMeta.farmCode, state, nextMeta.updatedAt).then(function(){
+          setSyncMeta(function(m){
+            if(m.updatedAt !== nextMeta.updatedAt) return m; // a newer local edit already superseded this push
+            const cleared = Object.assign({}, m, { needsSync:false });
+            saveSyncMeta(cleared);
+            return cleared;
+          });
+        }).catch(function(){});
+      }
+      return nextMeta;
+    });
+  }, [state]);
+
+  // Create a brand-new shared farm, seeded with this device's current data.
+  function createSharedFarm(){
+    const code = generateFarmCode();
+    const ts = Date.now();
+    return fbPushState(code, stateRef.current, ts).then(function(){
+      const meta = { farmCode: code, updatedAt: ts, needsSync:false };
+      saveSyncMeta(meta); setSyncMeta(meta);
+      return code;
+    });
+  }
+  // Join an existing shared farm by code, replacing this device's local data with whatever's
+  // already in that shared farm (this device's own prior local-only data is not merged in —
+  // joining means "show me what's already there", same mental model as restoring a backup).
+  function joinSharedFarm(code){
+    return fbFetchState(code).then(function(remote){
+      if(!remote) return { ok:false, reason:"not-found" };
+      skipNextSyncPush.current = true;
+      setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [] });
+      const meta = { farmCode: code, updatedAt: remote.updatedAt || Date.now(), needsSync:false };
+      saveSyncMeta(meta); setSyncMeta(meta);
+      return { ok:true };
+    });
+  }
+  // Stops syncing — this device's local data stays exactly as it is, it just stops sending or
+  // receiving further updates for that farm.
+  function leaveSharedFarm(){
+    const meta = { farmCode:null, updatedAt:0, needsSync:false };
+    saveSyncMeta(meta); setSyncMeta(meta);
+  }
 
   function updateFarm(patch){ setState(function(prev){ return Object.assign({}, prev, { farm: Object.assign({}, prev.farm, patch) }); }); }
   function addEvent(ev){ setState(function(prev){ return Object.assign({}, prev, { events: prev.events.concat([ev]) }); }); }
@@ -3114,7 +3457,8 @@ function App(){
       : tab === "why" ? e(WhyScreen, { state: state, focus: whyFocus })
       : e(SettingsScreen, { state: state, onUpdateFarm: updateFarm, onOpenAddEvent: function(){ openAddModal(); },
           onOpenAddObservation: openAddObsModal, onRestoreState: restoreState,
-          onAddAreaBed: addAreaBed, onRemoveAreaBed: removeAreaBed, lang: lang, onSetLang: setLang }),
+          onAddAreaBed: addAreaBed, onRemoveAreaBed: removeAreaBed, lang: lang, onSetLang: setLang,
+          syncMeta: syncMeta, onCreateSharedFarm: createSharedFarm, onJoinSharedFarm: joinSharedFarm, onLeaveSharedFarm: leaveSharedFarm }),
 
     modalOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setModalOpen(false); } },
       e("div", { className:"modal" },
