@@ -65,7 +65,6 @@
   .hero-label{font-size:11px; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:0.06em; margin-top:4px;}
   .hero-sub{font-size:13.5px; color:rgba(255,255,255,0.8); margin-top:7px;}
 
-  .attention-group{ flex:1; min-height:0; display:flex; flex-direction:column; padding:0 0 6px; }
   .section-label.tight{ margin:12px 0 7px; flex-shrink:0; }
   .card-list.tight{ flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; overflow-y:auto; }
   .card-list.tight > .card-btn{ flex:0 0 auto; max-height:64px; }
@@ -94,24 +93,7 @@
   .advisory-card .chev{ color:var(--text-muted); font-size:16px; margin-left:auto; }
 
   .hero-text{ min-width:0; flex:1; }
-  .health-pill{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px; vertical-align:middle; }
-  .health-pill .dot{ width:6px; height:6px; border-radius:50%; }
-  .health-pill.ok{ background:rgba(79,174,104,0.2); color:#8fe0a4; }
-  .health-pill.ok .dot{ background:#8fe0a4; }
-  .health-pill.warn{ background:rgba(224,168,63,0.2); color:#f0c675; }
-  .health-pill.warn .dot{ background:#f0c675; }
-  .health-pill.danger{ background:rgba(209,96,63,0.2); color:#f0a17f; }
-  .health-pill.danger .dot{ background:#f0a17f; }
-  .health-pill.neutral{ background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.65); }
-  .health-pill.neutral .dot{ background:rgba(255,255,255,0.65); }
 
-  .obs-card{
-    margin:0 16px; background:var(--bg-surface); border:1px solid var(--border-subtle);
-    border-radius:16px; padding:12px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0;
-  }
-  .obs-card .ev-mid{ min-width:0; flex:1; }
-  .obs-card .ev-sub{ font-size:11.5px; color:var(--text-secondary); margin-top:3px; }
-  .obs-text{ font-size:13px; font-style:italic; line-height:1.35; color:var(--text-primary); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .empty-state.compact{ margin:10px 20px 0; padding:14px 16px; font-size:12.5px; flex-shrink:0; }
 
   .section-label{
@@ -126,7 +108,6 @@
     border-radius:16px; padding:14px 16px;
     display:flex; align-items:center; gap:14px;
   }
-  .event-card.placeholder{ border-style:dashed; opacity:0.75; }
   .ring-wrap{position:relative; width:52px; height:52px; flex-shrink:0;}
   .ring-wrap svg{transform:rotate(-90deg);}
   .ring-num{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700;}
@@ -141,11 +122,6 @@
 
   .timeline{padding:6px 20px 0; display:flex; gap:0; overflow-x:auto; -webkit-overflow-scrolling:touch; flex-shrink:0;}
   .timeline::-webkit-scrollbar{display:none;}
-  .tl-item{flex-shrink:0; width:98px; display:flex; flex-direction:column; align-items:flex-start; position:relative; padding-right:12px;}
-  .tl-dot{width:8px; height:8px; border-radius:50%; background:var(--accent-sage); margin-bottom:6px;}
-  .tl-line{position:absolute; top:3px; left:8px; width:100%; height:1px; background:var(--border-subtle);}
-  .tl-name{font-size:11.5px; font-weight:600; color:var(--text-primary); line-height:1.25;}
-  .tl-date{font-size:10px; color:var(--text-muted); margin-top:2px;}
 
   .empty-state{margin:20px 20px 0; text-align:center; color:var(--text-secondary); font-size:13.5px; line-height:1.6; background:var(--bg-surface); border:1px dashed var(--border-subtle); border-radius:16px; padding:24px 16px;}
 
@@ -157,7 +133,6 @@
   .tlv-content{ padding-bottom:16px; min-width:0; }
   .tlv-name{ font-size:13.5px; font-weight:700; }
   .tlv-date{ font-size:11.5px; color:var(--text-muted); margin-top:2px; }
-  .empty-state .big{font-size:30px; margin-bottom:8px;}
 
   .bottom-nav{
     position:fixed; bottom:0; left:0; right:0;
@@ -227,18 +202,7 @@
   .data-row:last-child{border-bottom:none;}
   .data-row .chev{color:var(--text-muted); font-size:18px;}
 
-  .settings-event-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-subtle);}
-  .settings-event-row:last-child{border-bottom:none;}
-  .settings-event-row .info .name{font-size:14px; font-weight:700;}
-  .settings-event-row .info .date{font-size:12px; color:var(--text-secondary); margin-top:2px;}
-  .settings-event-row .info .obs{font-size:11.5px; color:var(--text-muted); margin-top:2px; font-style:italic;}
   .obs{font-size:12.5px; color:var(--text-secondary); font-style:italic; line-height:1.4;}
-  .row-actions{display:flex; gap:8px; flex-shrink:0;}
-  .icon-btn{background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:8px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--text-secondary);}
-  .icon-btn.danger-btn{color:var(--status-danger);}
-  .tag-pill{font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:20px; margin-left:8px; vertical-align:middle;}
-  .tag-pill.attn{background:var(--accent-dim); color:var(--accent);}
-  .tag-pill.mile{background:var(--bg-elevated); color:var(--text-muted); border:1px solid var(--border-subtle);}
 
   .add-btn{width:100%; background:var(--accent-dim); color:var(--accent); border:1px dashed var(--accent); border-radius:10px; padding:12px; font-size:14px; font-weight:700; margin-top:14px;}
   .shape-select{display:flex; gap:8px; margin-bottom:16px;}
@@ -1198,15 +1162,6 @@ function TopAttentionCard(props){
   );
 }
 
-function TimelineItem(ev){
-  const days = daysSince(ev.date);
-  return e("div", { className:"tl-item", key: ev.id },
-    e("div", { className:"tl-line" }), e("div", { className:"tl-dot" }),
-    e("div", { className:"tl-name" }, eventDisplayName(ev)),
-    e("div", { className:"tl-date" }, relativeLabel(days))
-  );
-}
-
 // Growth-stage labels, split by which season phase is currently anchoring the day-count.
 // Phase 1 (sowing → transplanting): a single constant label — no point sub-staging by days
 // here since the real trigger for moving on is the Transplanting event, not a day threshold.
@@ -1823,33 +1778,6 @@ function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent){
     }
   }
   return flags;
-}
-
-function healthStatus(latestByCat){
-  const cats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
-  if(cats.length === 0) return { label: "Not enough data yet", cls: "neutral" };
-  let worst = "ok";
-  cats.forEach(function(id){
-    const uc = urgencyClass(daysSince(latestByCat[id].date));
-    if(uc === "danger") worst = "danger";
-    else if(uc === "warn" && worst !== "danger") worst = "warn";
-  });
-  if(worst === "danger") return { label: "Needs attention", cls: "danger" };
-  if(worst === "warn") return { label: "Keep an eye", cls: "warn" };
-  return { label: "On track", cls: "ok" };
-}
-
-function computeNextAction(latestByCat){
-  const cats = FULL_PRIORITY.filter(function(id){ return !!latestByCat[id]; });
-  if(cats.length === 0) return null;
-  let best = null;
-  cats.forEach(function(id){
-    const ev = latestByCat[id];
-    const uc = urgencyClass(daysSince(ev.date));
-    const score = uc === "danger" ? 2 : uc === "warn" ? 1 : 0;
-    if(!best || score > best.score){ best = { catId:id, ev:ev, score:score }; }
-  });
-  return best;
 }
 
 function observationSummaryText(o){
