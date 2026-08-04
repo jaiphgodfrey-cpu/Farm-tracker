@@ -167,6 +167,7 @@
   .why-status-badge.partial{ background:rgba(240,198,117,0.18); color:#f0c675; }
   .why-status-badge.none{ background:rgba(240,161,127,0.18); color:#f0a17f; }
   .why-status-badge.no-data{ background:rgba(255,255,255,0.1); color:var(--text-muted); }
+  .why-status-badge.on-pace{ background:rgba(159,199,224,0.18); color:#9fc7e0; }
   .why-subhead{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:0; }
   .why-criteria-list{ display:flex; flex-direction:column; gap:12px; }
   .why-criterion{ display:flex; flex-direction:column; gap:2px; font-size:12.5px; }
@@ -522,7 +523,16 @@ const translations = {
     "settings.accessWarning": "Anyone with this code can see and change this farm's data.",
     "settings.syncActionFailed": "Something went wrong. Check your connection and try again.",
     "settings.farmCodeNotFound": "No shared farm found with that code. Check it and try again.",
-    "settings.syncedNow": "Synced", "settings.syncPending": "Waiting to sync\u2026", "settings.creating": "Creating\u2026", "settings.joining": "Joining\u2026"
+    "settings.syncedNow": "Synced", "settings.syncPending": "Waiting to sync\u2026", "settings.creating": "Creating\u2026", "settings.joining": "Joining\u2026",
+
+    "pace.title": "Nursery pace", "pace.ahead": "Ahead of schedule", "pace.onPace": "On pace", "pace.behind": "Behind schedule",
+    "pace.daysToTransplant": "days to transplant", "pace.readyNow": "ready for transplant check",
+    "pace.whatThisMeans": "What this means",
+    "pace.yourRate": "Your seedlings are growing at", "pace.typicalRate": "Typical nursery rate is", "pace.leavesPerDay": "leaves/day",
+    "pace.atThisRate": "At this rate, expect about", "pace.moreDaysToReach": "more days to reach", "pace.leaves": "leaves",
+    "pace.reachedTarget": "You've reached the transplant-readiness target with", "pace.leavesLogged": "leaves logged",
+    "pace.estimateDisclaimer": "This is a simple estimate based on your observations and the 3\u20135 leaves at 6\u20138 weeks guideline, not a continuous growth curve.",
+    "pace.sourceNote": "Interpolated from the ready-to-transplant guideline: 3\u20135 leaves at 6\u20138 weeks after sowing."
   },
   sw: {
     "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
@@ -665,7 +675,16 @@ const translations = {
     "settings.accessWarning": "Yeyote mwenye msimbo huu anaweza kuona na kubadilisha taarifa za shamba hili.",
     "settings.syncActionFailed": "Kuna hitilafu imetokea. Hakikisha muunganisho wako kisha jaribu tena.",
     "settings.farmCodeNotFound": "Hakuna shamba la pamoja lililopatikana kwa msimbo huo. Hakikisha kisha jaribu tena.",
-    "settings.syncedNow": "Imesawazishwa", "settings.syncPending": "Inasubiri kusawazishwa\u2026", "settings.creating": "Inaanzishwa\u2026", "settings.joining": "Inajiunga\u2026"
+    "settings.syncedNow": "Imesawazishwa", "settings.syncPending": "Inasubiri kusawazishwa\u2026", "settings.creating": "Inaanzishwa\u2026", "settings.joining": "Inajiunga\u2026",
+
+    "pace.title": "Kasi ya kitalu", "pace.ahead": "Mbele ya ratiba", "pace.onPace": "Kwenye ratiba", "pace.behind": "Nyuma ya ratiba",
+    "pace.daysToTransplant": "siku za kuhamisha miche", "pace.readyNow": "tayari kwa kuhamisha miche",
+    "pace.whatThisMeans": "Maana yake",
+    "pace.yourRate": "Miche yako inakua kwa kiwango cha", "pace.typicalRate": "Kiwango cha kawaida cha kitalu ni", "pace.leavesPerDay": "majani/siku",
+    "pace.atThisRate": "Kwa kiwango hiki, tarajia", "pace.moreDaysToReach": "siku zaidi kufikia", "pace.leaves": "majani",
+    "pace.reachedTarget": "Umefikia lengo la kuhamisha miche na", "pace.leavesLogged": "majani uliyoyaandika",
+    "pace.estimateDisclaimer": "Hii ni makisio rahisi kutokana na uchunguzi wako na muongozo wa majani 3\u20135 katika wiki 6\u20138, si mstari wa ukuaji uliochunguzwa kikamilifu.",
+    "pace.sourceNote": "Imetokana na muongozo wa kuhamisha miche: majani 3\u20135 katika wiki 6\u20138 baada ya kupanda."
   }
 };
 function t(key){
@@ -1335,6 +1354,72 @@ const BASELINE_CHECKS_SW = {
     }
   }
 };
+
+// --- Nursery pace engine (germination phase only) ------------------------------------------
+// Interpolates a simple straight-line estimate between two already-sourced points: sowing
+// (0 leaves, day 0) and the ready-to-transplant checkpoint from BASELINE_CHECKS.readyToTransplant
+// (3-5 leaves at 6-8 weeks, source G7). This is NOT a continuous researched growth curve — it's
+// an honest interpolation between two verified facts, and the UI labels it as an estimate.
+// Compares the farmer's own logged leaf-count trend against this line to say ahead/on pace/behind,
+// and predicts days remaining to the transplant-ready leaf target.
+const PACE_TARGET_LEAVES = 4;   // midpoint of the sourced 3-5 leaf range
+const PACE_TARGET_DAYS  = 49;   // midpoint of the sourced 6-8 week (42-56 day) range
+
+function evaluateNurseryPace(sowingEvent, observations){
+  if(!sowingEvent) return null;
+  const seasonObs = (observations || []).filter(function(o){
+    return o.date >= sowingEvent.date && o.leafCount != null && o.leafCount !== "";
+  }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+  if(seasonObs.length < 2){
+    return { status: "insufficient", observationCount: seasonObs.length };
+  }
+
+  const first  = seasonObs[0];
+  const latest = seasonObs[seasonObs.length - 1];
+  const daysElapsed = daysBetween(first.date, latest.date);
+  const leavesGained = latest.leafCount - first.leafCount;
+  if(daysElapsed <= 0 || leavesGained < 0) return null;
+
+  const actualRate   = leavesGained / daysElapsed;                 // leaves/day, full-season trend
+  const expectedRate = PACE_TARGET_LEAVES / PACE_TARGET_DAYS;      // ~0.082 leaves/day
+
+  // Recent trend (last two observations) drives the days-to-target prediction, so it responds
+  // to a recent slowdown/speedup rather than being dragged by the whole season's average.
+  let recentRate = actualRate;
+  const lastTwo = seasonObs.slice(-2);
+  const dRecent = daysBetween(lastTwo[0].date, lastTwo[1].date);
+  const lRecent = lastTwo[1].leafCount - lastTwo[0].leafCount;
+  if(dRecent > 0 && lRecent >= 0) recentRate = lRecent / dRecent;
+
+  const ratio = actualRate / expectedRate;
+  // Status and badge are computed separately: badge conveys severity (matches the rest of the
+  // Why screen's full/partial/none/no-data language), status conveys the plain-language state
+  // used in Home's one-line hint. "On pace" gets its own neutral badge color rather than
+  // reusing "no-data" grey, which everywhere else in this app means "nothing recorded yet."
+  let status, badgeClass;
+  if(ratio >= 1.15){ status = "ahead"; badgeClass = "full"; }
+  else if(ratio <= 0.6){ status = "behind"; badgeClass = "none"; }
+  else if(ratio <= 0.85){ status = "behind"; badgeClass = "partial"; }
+  else { status = "onPace"; badgeClass = "on-pace"; }
+
+  // Predict days until the target leaf count (only meaningful if still growing and not there yet)
+  let daysToTarget = null;
+  if(recentRate > 0 && latest.leafCount < PACE_TARGET_LEAVES){
+    daysToTarget = Math.max(0, Math.ceil((PACE_TARGET_LEAVES - latest.leafCount) / recentRate));
+  }
+
+  return {
+    status: status,
+    badgeClass: badgeClass,
+    actualRate: actualRate,
+    expectedRate: expectedRate,
+    recentRate: recentRate,
+    latestLeafCount: latest.leafCount,
+    daysToTarget: daysToTarget,
+    observationCount: seasonObs.length
+  };
+}
 // Picks the one check relevant to the current phase/sub-stage, evaluates it against the most
 // recent Observation, and returns everything the "Why" screen needs to explain itself. Never
 // changes the logged-event phase — advisory only, per design decision.
@@ -1920,6 +2005,9 @@ function HomeScreen(state){
   const fertilizerSafetyFlags = useMemo(function(){
     return evaluateFertilizerSafety(state.events, sowingEvent ? sowingEvent.date : null, sowingEvent).filter(function(f){ return f.severity === "critical" || f.severity === "high"; });
   }, [state.events, sowingEvent]);
+  const nurseryPace = useMemo(function(){
+    return heroPhase === "germination" ? evaluateNurseryPace(sowingEvent, state.observations) : null;
+  }, [heroPhase, sowingEvent, state.observations]);
 
   // Threat Map cards auto-hide from Home after 24h or a new event/observation, whichever first.
   const totalEntries = state.events.length + (state.observations ? state.observations.length : 0);
@@ -1976,6 +2064,11 @@ function HomeScreen(state){
                   ? (heroPhase === "growing" ? "kuhamisha miche" : heroPhase === "drying" ? "kuvuna" : "kupanda")
                   : (heroPhase === "growing" ? "transplanting" : heroPhase === "drying" ? "harvest" : "sowing"))),
                 e("div", { className:"hero-sub" }, stageLabelDisplay(heroStageLabel)),
+                nurseryPace && nurseryPace.status !== "insufficient" && e("div", { className:"hero-sub", style:{ opacity:0.75, marginTop:"3px", fontSize:"12.5px" } },
+                  t("pace." + nurseryPace.status) + (nurseryPace.daysToTarget != null
+                    ? " \u00b7 ~" + nurseryPace.daysToTarget + " " + t("pace.daysToTransplant")
+                    : nurseryPace.latestLeafCount >= PACE_TARGET_LEAVES ? " \u00b7 " + t("pace.readyNow") : "")
+                ),
                 transplantDatRange && e("div", { className:"hero-sub", style:{ opacity:0.75, marginTop:"2px" } },
                   (currentLang === "sw" ? "Umri wa zao unatofautiana kwa sehemu: " : "Crop age varies by section: ") + transplantDatRange.minDAT + "\u2013" + transplantDatRange.maxDAT + " DAT (" + (currentLang === "sw" ? "kuhamishwa kwa siku " + transplantDatRange.spanDays : "transplanted over " + transplantDatRange.spanDays + " days") + ")")
               )
@@ -2335,6 +2428,29 @@ function WhyGuardrailCard(props){
   );
 }
 
+// Nursery pace card — shown only during germination, once at least 2 leaf-count observations
+// exist this season. Explains the estimate honestly (interpolated, not a sourced growth curve).
+function WhyPaceCard(props){
+  const p = props.pace;
+  return e(WhyCard, { id:"why-pace", title: t("pace.title"), badgeClass: p.badgeClass, badgeText: t("pace." + p.status) },
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("pace.whatThisMeans")),
+    e("div", { className:"hint" },
+      t("pace.yourRate") + " " + p.actualRate.toFixed(2) + " " + t("pace.leavesPerDay") + ". " +
+      t("pace.typicalRate") + " " + p.expectedRate.toFixed(2) + " " + t("pace.leavesPerDay") + "."
+    ),
+    p.daysToTarget != null && e("div", { className:"hint", style:{ marginTop:"8px" } },
+      t("pace.atThisRate") + " " + p.daysToTarget + " " + t("pace.moreDaysToReach") + " " + PACE_TARGET_LEAVES + " " + t("pace.leaves") + "."
+    ),
+    p.latestLeafCount >= PACE_TARGET_LEAVES && e("div", { className:"hint", style:{ marginTop:"8px" } },
+      t("pace.reachedTarget") + " " + p.latestLeafCount + " " + t("pace.leavesLogged") + "."
+    ),
+    e("div", { className:"hint", style:{ marginTop:"10px", fontStyle:"italic" } }, t("pace.estimateDisclaimer")),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    e("div", { className:"hint", style:{ marginBottom:"8px" } }, t("pace.sourceNote")),
+    e(WhySourceLinks, { sourceKeys: ["G7"] })
+  );
+}
+
 
 // The Why screen — answers "why is the app telling me this?" It never introduces new logic of
 // its own; it only explains the engine advisory (evaluateBaselineCheck) and the routine action
@@ -2374,6 +2490,10 @@ function WhyScreen(props){
     const fertSafety = evaluateFertilizerSafety(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.sowingEvent);
     return fertSafety.concat(timing);
   }, [state.events, seasonPhase.sowingEvent, seasonPhase.transplantEvent, seasonPhase.harvestEvent]);
+  const nurseryPace = useMemo(function(){
+    return seasonPhase.heroPhase === "germination" ? evaluateNurseryPace(seasonPhase.sowingEvent, state.observations) : null;
+  }, [seasonPhase.heroPhase, seasonPhase.sowingEvent, state.observations]);
+  const showPaceCard = nurseryPace && nurseryPace.status !== "insufficient";
 
   // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
   // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
@@ -2405,13 +2525,15 @@ function WhyScreen(props){
           !engineCheck
             ? null
             : e("div", { style:{ margin:"0 20px 12px" } }, e(WhyAdvisoryCard, { engineCheck: engineCheck })),
+          showPaceCard &&
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyPaceCard, { pace: nurseryPace })),
           nurseryMulchAction && nurseryMulchAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: nurseryMulchAction, metaText:t("why.seedlingsEmerged") })),
           erectShadeAction && erectShadeAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: erectShadeAction, metaText:t("why.sunScorchLogged") })),
           removeShadeAction && removeShadeAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 20px" } }, e(WhyOneTimeActionCard, { data: removeShadeAction, metaText:t("why.shadeErectedMeta") })),
-          !engineCheck && !(nurseryMulchAction && nurseryMulchAction.status === "due")
+          !engineCheck && !showPaceCard && !(nurseryMulchAction && nurseryMulchAction.status === "due")
             && !(erectShadeAction && erectShadeAction.status === "due") && !(removeShadeAction && removeShadeAction.status === "due") &&
             e("div", { className:"empty-state", style:{ margin:"0 20px 20px" } },
               e("div", null, t("why.nothingToCheck") + " (" + stageLabelDisplay(seasonPhase.heroStageLabel) + ") " + t("why.nothingToCheckTail")))
