@@ -530,9 +530,10 @@ const translations = {
     "pace.whatThisMeans": "What this means",
     "pace.yourRate": "Your seedlings are growing at", "pace.typicalRate": "Typical nursery rate is", "pace.leavesPerDay": "leaves/day",
     "pace.atThisRate": "At this rate, expect about", "pace.moreDaysToReach": "more days to reach", "pace.leaves": "leaves",
-    "pace.reachedTarget": "You've reached the transplant-readiness target with", "pace.leavesLogged": "leaves logged",
     "pace.estimateDisclaimer": "This is a simple estimate based on your observations and the 3\u20135 leaves at 6\u20138 weeks guideline, not a continuous growth curve.",
-    "pace.sourceNote": "Interpolated from the ready-to-transplant guideline: 3\u20135 leaves at 6\u20138 weeks after sowing."
+    "pace.sourceNote": "Interpolated from the ready-to-transplant guideline: 3\u20135 leaves at 6\u20138 weeks after sowing.",
+    "pace.inWindow": "In transplant-ready window",
+    "pace.inWindowExplanation": "Your seedlings have reached the minimum guideline threshold (3 leaves). You can consider transplanting now \u2014 the guideline is a range, not a single target."
   },
   sw: {
     "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
@@ -682,9 +683,10 @@ const translations = {
     "pace.whatThisMeans": "Maana yake",
     "pace.yourRate": "Miche yako inakua kwa kiwango cha", "pace.typicalRate": "Kiwango cha kawaida cha kitalu ni", "pace.leavesPerDay": "majani/siku",
     "pace.atThisRate": "Kwa kiwango hiki, tarajia", "pace.moreDaysToReach": "siku zaidi kufikia", "pace.leaves": "majani",
-    "pace.reachedTarget": "Umefikia lengo la kuhamisha miche na", "pace.leavesLogged": "majani uliyoyaandika",
     "pace.estimateDisclaimer": "Hii ni makisio rahisi kutokana na uchunguzi wako na muongozo wa majani 3\u20135 katika wiki 6\u20138, si mstari wa ukuaji uliochunguzwa kikamilifu.",
-    "pace.sourceNote": "Imetokana na muongozo wa kuhamisha miche: majani 3\u20135 katika wiki 6\u20138 baada ya kupanda."
+    "pace.sourceNote": "Imetokana na muongozo wa kuhamisha miche: majani 3\u20135 katika wiki 6\u20138 baada ya kupanda.",
+    "pace.inWindow": "Kwenye kipindi cha kuhamisha miche",
+    "pace.inWindowExplanation": "Miche yako yamefikia kiwango cha chini cha muongozo (majani 3). Unaweza kuanza kuhamisha miche sasa \u2014 muongozo ni wigo, si lengo moja."
   }
 };
 function t(key){
@@ -1362,8 +1364,13 @@ const BASELINE_CHECKS_SW = {
 // an honest interpolation between two verified facts, and the UI labels it as an estimate.
 // Compares the farmer's own logged leaf-count trend against this line to say ahead/on pace/behind,
 // and predicts days remaining to the transplant-ready leaf target.
-const PACE_TARGET_LEAVES = 4;   // midpoint of the sourced 3-5 leaf range
+const PACE_TARGET_LEAVES = 4;   // midpoint — used for projection when NOT yet in the ready window
 const PACE_TARGET_DAYS  = 49;   // midpoint of the sourced 6-8 week (42-56 day) range
+const PACE_MIN_LEAVES = 3;      // lower bound of the sourced 3-5 leaf range — same threshold the
+                                 // existing readyToTransplant baseline check already uses, so this
+                                 // card can never contradict that one. Deliberately no day-count
+                                 // gate: the baseline check doesn't use one either, it checks leaf
+                                 // count and height independently.
 
 function evaluateNurseryPace(sowingEvent, observations){
   if(!sowingEvent) return null;
@@ -1403,15 +1410,22 @@ function evaluateNurseryPace(sowingEvent, observations){
   else if(ratio <= 0.85){ status = "behind"; badgeClass = "partial"; }
   else { status = "onPace"; badgeClass = "on-pace"; }
 
-  // Predict days until the target leaf count (only meaningful if still growing and not there yet)
+  // Once the farmer has already reached the guideline's own minimum (3 leaves), stop projecting
+  // toward the arbitrary midpoint (4 leaves) — the guideline is a range, not a single target, and
+  // chasing the midpoint past the point of already being "ready" is misleading.
+  const inTransplantWindow = latest.leafCount >= PACE_MIN_LEAVES;
+
+  // Predict days until the target leaf count (only meaningful if still growing, not yet in the
+  // ready window, and not there yet)
   let daysToTarget = null;
-  if(recentRate > 0 && latest.leafCount < PACE_TARGET_LEAVES){
+  if(!inTransplantWindow && recentRate > 0 && latest.leafCount < PACE_TARGET_LEAVES){
     daysToTarget = Math.max(0, Math.ceil((PACE_TARGET_LEAVES - latest.leafCount) / recentRate));
   }
 
   return {
     status: status,
     badgeClass: badgeClass,
+    inTransplantWindow: inTransplantWindow,
     actualRate: actualRate,
     expectedRate: expectedRate,
     recentRate: recentRate,
@@ -2065,9 +2079,11 @@ function HomeScreen(state){
                   : (heroPhase === "growing" ? "transplanting" : heroPhase === "drying" ? "harvest" : "sowing"))),
                 e("div", { className:"hero-sub" }, stageLabelDisplay(heroStageLabel)),
                 nurseryPace && nurseryPace.status !== "insufficient" && e("div", { className:"hero-sub", style:{ opacity:0.75, marginTop:"3px", fontSize:"12.5px" } },
-                  t("pace." + nurseryPace.status) + (nurseryPace.daysToTarget != null
-                    ? " \u00b7 ~" + nurseryPace.daysToTarget + " " + t("pace.daysToTransplant")
-                    : nurseryPace.latestLeafCount >= PACE_TARGET_LEAVES ? " \u00b7 " + t("pace.readyNow") : "")
+                  nurseryPace.inTransplantWindow
+                    ? t("pace.inWindow") + " \u00b7 " + t("pace.readyNow")
+                    : t("pace." + nurseryPace.status) + (nurseryPace.daysToTarget != null
+                      ? " \u00b7 ~" + nurseryPace.daysToTarget + " " + t("pace.daysToTransplant")
+                      : "")
                 ),
                 transplantDatRange && e("div", { className:"hero-sub", style:{ opacity:0.75, marginTop:"2px" } },
                   (currentLang === "sw" ? "Umri wa zao unatofautiana kwa sehemu: " : "Crop age varies by section: ") + transplantDatRange.minDAT + "\u2013" + transplantDatRange.maxDAT + " DAT (" + (currentLang === "sw" ? "kuhamishwa kwa siku " + transplantDatRange.spanDays : "transplanted over " + transplantDatRange.spanDays + " days") + ")")
@@ -2432,18 +2448,23 @@ function WhyGuardrailCard(props){
 // exist this season. Explains the estimate honestly (interpolated, not a sourced growth curve).
 function WhyPaceCard(props){
   const p = props.pace;
-  return e(WhyCard, { id:"why-pace", title: t("pace.title"), badgeClass: p.badgeClass, badgeText: t("pace." + p.status) },
+  return e(WhyCard, { id:"why-pace", title: t("pace.title"),
+      badgeClass: p.inTransplantWindow ? "full" : p.badgeClass,
+      badgeText: p.inTransplantWindow ? t("pace.inWindow") : t("pace." + p.status) },
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("pace.whatThisMeans")),
-    e("div", { className:"hint" },
-      t("pace.yourRate") + " " + p.actualRate.toFixed(2) + " " + t("pace.leavesPerDay") + ". " +
-      t("pace.typicalRate") + " " + p.expectedRate.toFixed(2) + " " + t("pace.leavesPerDay") + "."
-    ),
-    p.daysToTarget != null && e("div", { className:"hint", style:{ marginTop:"8px" } },
-      t("pace.atThisRate") + " " + p.daysToTarget + " " + t("pace.moreDaysToReach") + " " + PACE_TARGET_LEAVES + " " + t("pace.leaves") + "."
-    ),
-    p.latestLeafCount >= PACE_TARGET_LEAVES && e("div", { className:"hint", style:{ marginTop:"8px" } },
-      t("pace.reachedTarget") + " " + p.latestLeafCount + " " + t("pace.leavesLogged") + "."
-    ),
+
+    p.inTransplantWindow
+      ? e("div", { className:"hint" }, t("pace.inWindowExplanation"))
+      : e(React.Fragment, null,
+          e("div", { className:"hint" },
+            t("pace.yourRate") + " " + p.actualRate.toFixed(2) + " " + t("pace.leavesPerDay") + ". " +
+            t("pace.typicalRate") + " " + p.expectedRate.toFixed(2) + " " + t("pace.leavesPerDay") + "."
+          ),
+          p.daysToTarget != null && e("div", { className:"hint", style:{ marginTop:"8px" } },
+            t("pace.atThisRate") + " " + p.daysToTarget + " " + t("pace.moreDaysToReach") + " " + PACE_TARGET_LEAVES + " " + t("pace.leaves") + "."
+          )
+        ),
+
     e("div", { className:"hint", style:{ marginTop:"10px", fontStyle:"italic" } }, t("pace.estimateDisclaimer")),
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
     e("div", { className:"hint", style:{ marginBottom:"8px" } }, t("pace.sourceNote")),
