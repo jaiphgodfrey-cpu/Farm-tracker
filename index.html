@@ -533,7 +533,10 @@ const translations = {
     "pace.estimateDisclaimer": "This is a simple estimate based on your observations and the 3\u20135 leaves at 6\u20138 weeks guideline, not a continuous growth curve.",
     "pace.sourceNote": "Interpolated from the ready-to-transplant guideline: 3\u20135 leaves at 6\u20138 weeks after sowing.",
     "pace.inWindow": "In transplant-ready window",
-    "pace.inWindowExplanation": "Your seedlings have reached the minimum guideline threshold (3 leaves). You can consider transplanting now \u2014 the guideline is a range, not a single target."
+    "pace.inWindowExplanation": "Your seedlings have reached the minimum guideline threshold (3 leaves). You can consider transplanting now \u2014 the guideline is a range, not a single target.",
+
+    "fertwindow.upcoming": "Upcoming", "fertwindow.dueSoon": "Due soon", "fertwindow.overdue": "Overdue",
+    "fertwindow.dueIn": "Due in", "fertwindow.dueToday": "Due today", "fertwindow.overdueBy": "Overdue by"
   },
   sw: {
     "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
@@ -686,7 +689,10 @@ const translations = {
     "pace.estimateDisclaimer": "Hii ni makisio rahisi kutokana na uchunguzi wako na muongozo wa majani 3\u20135 katika wiki 6\u20138, si mstari wa ukuaji uliochunguzwa kikamilifu.",
     "pace.sourceNote": "Imetokana na muongozo wa kuhamisha miche: majani 3\u20135 katika wiki 6\u20138 baada ya kupanda.",
     "pace.inWindow": "Kwenye kipindi cha kuhamisha miche",
-    "pace.inWindowExplanation": "Miche yako yamefikia kiwango cha chini cha muongozo (majani 3). Unaweza kuanza kuhamisha miche sasa \u2014 muongozo ni wigo, si lengo moja."
+    "pace.inWindowExplanation": "Miche yako yamefikia kiwango cha chini cha muongozo (majani 3). Unaweza kuanza kuhamisha miche sasa \u2014 muongozo ni wigo, si lengo moja.",
+
+    "fertwindow.upcoming": "Inakuja", "fertwindow.dueSoon": "Inakaribia", "fertwindow.overdue": "Imechelewa",
+    "fertwindow.dueIn": "Inatakiwa baada ya", "fertwindow.dueToday": "Inatakiwa leo", "fertwindow.overdueBy": "Imechelewa kwa"
   }
 };
 function t(key){
@@ -1802,6 +1808,78 @@ function evaluateGuardrails(events, seasonAnchorDate, transplantEvent, harvestEv
   return flags;
 }
 
+// ---- Fertilizer windows (proactive, calendar-based reminders) ----
+// GUARDRAILS above only complains about a fertilizer application AFTER it's been logged late.
+// This looks forward from the transplant date instead, so the farmer can see the window
+// coming rather than finding out afterward that they missed it. Uses the exact same sourced
+// numbers already used in GUARDRAILS.fertilizer_too_late and the fertilizer calculator's
+// suggested rates (30 / 45 days after transplanting, JICA/SHEP guide) — this is not a new
+// guideline, just a forward-looking view of one that already existed.
+// Deliberately calendar-anchored rather than observation-anchored: unlike morphology checks
+// (leaf count, height, which genuinely vary by how a season is going), the sources themselves
+// give fertilizer timing as a day-count from transplanting, so counting down days is honest
+// here in a way it wouldn't be for something like transplant readiness.
+// Window 2 only ever appears once window 1 has actually been logged (by design decision) —
+// showing two countdowns before the farmer has done the first one adds noise, not clarity.
+const FERTILIZER_WINDOWS = [
+  {
+    windowNumber: 1,
+    targetDay: 30,
+    label: "Top-dress 1 (DAP/CAN)",
+    guidance: "The first split top-dress application is typically due around 30 days after transplanting.",
+    sourceKeys: ["G1", "KE1", "G7"]
+  },
+  {
+    windowNumber: 2,
+    targetDay: 45,
+    label: "Top-dress 2 (DAP/CAN)",
+    guidance: "The second split top-dress application is typically due around 45 days after transplanting. Guidance is to stop fertilizing entirely at least 4 weeks before harvest after this.",
+    sourceKeys: ["G1", "KE1", "G7"]
+  }
+];
+
+const FERTILIZER_WINDOWS_SW = {
+  1: {
+    label: "Kuweka mbolea ya kwanza (DAP/CAN)",
+    guidance: "Uwekaji wa kwanza wa mbolea ya kugawanya kwa kawaida huhitajika karibu siku 30 baada ya kuhamisha miche."
+  },
+  2: {
+    label: "Kuweka mbolea ya pili (DAP/CAN)",
+    guidance: "Uwekaji wa pili wa mbolea ya kugawanya kwa kawaida huhitajika karibu siku 45 baada ya kuhamisha miche. Muongozo unashauri kusimamisha mbolea kabisa angalau wiki 4 kabla ya kuvuna baada ya hapo."
+  }
+};
+
+function buildFertilizerWindowResult(w, daysUntil){
+  const sw = currentLang === "sw" ? FERTILIZER_WINDOWS_SW[w.windowNumber] : null;
+  const display = sw ? Object.assign({}, w, sw) : w;
+  let urgency;
+  if(daysUntil < 0) urgency = "overdue";
+  else if(daysUntil <= 7) urgency = "dueSoon";
+  else urgency = "upcoming";
+  return { windowNumber: w.windowNumber, window: display, daysUntil: daysUntil, urgency: urgency };
+}
+
+function evaluateFertilizerWindows(heroPhase, transplantEvent, events, seasonAnchorDate){
+  if(heroPhase !== "growing" || !transplantEvent) return [];
+  const anchor = transplantAnchorDate(transplantEvent);
+  const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
+  const fertEvents = events.filter(function(ev){
+    return ev.categoryId === "fertilizer" && ev.date >= anchor && inSeason(ev);
+  }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+  const daysSinceTransplant = daysSince(anchor);
+  const results = [];
+
+  const window1Done = fertEvents.length >= 1;
+  if(!window1Done){
+    results.push(buildFertilizerWindowResult(FERTILIZER_WINDOWS[0], FERTILIZER_WINDOWS[0].targetDay - daysSinceTransplant));
+  } else if(fertEvents.length < 2){
+    results.push(buildFertilizerWindowResult(FERTILIZER_WINDOWS[1], FERTILIZER_WINDOWS[1].targetDay - daysSinceTransplant));
+  }
+
+  return results;
+}
+
 // ---- Fertilizer Safety ----
 // Crop-agnostic on purpose: this is basic fertilizer chemistry (ammonia toxicity to
 // germinating seeds/young roots, and calcium-phosphate lock-up when incompatible products are
@@ -2022,6 +2100,9 @@ function HomeScreen(state){
   const nurseryPace = useMemo(function(){
     return heroPhase === "germination" ? evaluateNurseryPace(sowingEvent, state.observations) : null;
   }, [heroPhase, sowingEvent, state.observations]);
+  const fertilizerWindows = useMemo(function(){
+    return evaluateFertilizerWindows(heroPhase, transplantEvent, state.events, sowingEvent ? sowingEvent.date : null);
+  }, [heroPhase, transplantEvent, state.events, sowingEvent]);
 
   // Threat Map cards auto-hide from Home after 24h or a new event/observation, whichever first.
   const totalEntries = state.events.length + (state.observations ? state.observations.length : 0);
@@ -2153,6 +2234,24 @@ function HomeScreen(state){
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, f.label),
             e("div", { className:"advisory-sub" }, t("why.logged2") + " " + relativeLabel(daysSince(f.eventDate)) + ". " + t("why.tapToSeeWhy"))
+          ),
+          e("span", { className:"chev" }, "›")
+        );
+      }),
+
+      // Fertilizer windows — proactive countdown to the next sourced top-dress date, shown from
+      // day 1 of transplanting through the growing phase. Badge escalates green -> amber -> red
+      // as the window approaches and passes; disappears once actually logged.
+      fertilizerWindows.map(function(fw){
+        const cls = fw.urgency === "overdue" ? "advisory-card threat-critical" : fw.urgency === "dueSoon" ? "advisory-card partial" : "advisory-card";
+        const subText = fw.urgency === "overdue"
+          ? t("fertwindow.overdueBy") + " " + Math.abs(fw.daysUntil) + " " + t("ev.days") + ". " + t("why.tapToSeeWhy")
+          : fw.daysUntil === 0 ? t("fertwindow.dueToday") + ". " + t("why.tapToSeeWhy")
+          : t("fertwindow.dueIn") + " " + fw.daysUntil + " " + t("ev.days") + ". " + t("why.tapToSeeWhy");
+        return e("div", { key:"fertwindow-" + fw.windowNumber, className: cls, onClick: function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }), role:"button", tabIndex:0 },
+          e("div", { style:{ minWidth:0, flex:1 } },
+            e("div", { className:"advisory-title" }, fw.window.label),
+            e("div", { className:"advisory-sub" }, subText)
           ),
           e("span", { className:"chev" }, "›")
         );
@@ -2472,6 +2571,26 @@ function WhyPaceCard(props){
   );
 }
 
+// Fertilizer window card — proactive countdown to the next sourced top-dress window, shown
+// only during the growing phase. Badge color escalates as the window approaches/passes:
+// plenty of time (default green) -> due within a week (amber) -> overdue, not yet logged (red).
+function WhyFertilizerWindowCard(props){
+  const fw = props.fertWindow;
+  const badgeClass = fw.urgency === "overdue" ? "none" : fw.urgency === "dueSoon" ? "partial" : "full";
+  const badgeText = fw.urgency === "overdue" ? t("fertwindow.overdue")
+    : fw.urgency === "dueSoon" ? t("fertwindow.dueSoon") : t("fertwindow.upcoming");
+  const daysLine = fw.urgency === "overdue"
+    ? t("fertwindow.overdueBy") + " " + Math.abs(fw.daysUntil) + " " + t("ev.days")
+    : fw.daysUntil === 0 ? t("fertwindow.dueToday")
+    : t("fertwindow.dueIn") + " " + fw.daysUntil + " " + t("ev.days");
+  return e(WhyCard, { id:"why-fertwindow-section", title: fw.window.label, badgeClass: badgeClass, badgeText: badgeText },
+    e("div", { className:"hint" }, daysLine + "."),
+    e("div", { className:"hint", style:{ marginTop:"8px" } }, fw.window.guidance),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    e(WhySourceLinks, { sourceKeys: fw.window.sourceKeys })
+  );
+}
+
 
 // The Why screen — answers "why is the app telling me this?" It never introduces new logic of
 // its own; it only explains the engine advisory (evaluateBaselineCheck) and the routine action
@@ -2515,6 +2634,9 @@ function WhyScreen(props){
     return seasonPhase.heroPhase === "germination" ? evaluateNurseryPace(seasonPhase.sowingEvent, state.observations) : null;
   }, [seasonPhase.heroPhase, seasonPhase.sowingEvent, state.observations]);
   const showPaceCard = nurseryPace && nurseryPace.status !== "insufficient";
+  const fertilizerWindows = useMemo(function(){
+    return evaluateFertilizerWindows(seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent]);
 
   // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
   // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
@@ -2525,6 +2647,7 @@ function WhyScreen(props){
       : focus.id.indexOf("onetime-") === 0 ? "why-" + focus.id
       : focus.id.indexOf("threat-") === 0 ? "why-" + focus.id
       : focus.id.indexOf("fertsafety") === 0 ? "why-guardrails-section"
+      : focus.id.indexOf("fertwindow") === 0 ? "why-fertwindow-section"
       : "why-action-" + focus.id;
     const el = document.getElementById(domId);
     if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
@@ -2548,13 +2671,16 @@ function WhyScreen(props){
             : e("div", { style:{ margin:"0 20px 12px" } }, e(WhyAdvisoryCard, { engineCheck: engineCheck })),
           showPaceCard &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyPaceCard, { pace: nurseryPace })),
+          fertilizerWindows.map(function(fw){
+            return e("div", { key:"fertwindow-" + fw.windowNumber, style:{ margin:"0 20px 12px" } }, e(WhyFertilizerWindowCard, { fertWindow: fw }));
+          }),
           nurseryMulchAction && nurseryMulchAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: nurseryMulchAction, metaText:t("why.seedlingsEmerged") })),
           erectShadeAction && erectShadeAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: erectShadeAction, metaText:t("why.sunScorchLogged") })),
           removeShadeAction && removeShadeAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 20px" } }, e(WhyOneTimeActionCard, { data: removeShadeAction, metaText:t("why.shadeErectedMeta") })),
-          !engineCheck && !showPaceCard && !(nurseryMulchAction && nurseryMulchAction.status === "due")
+          !engineCheck && !showPaceCard && fertilizerWindows.length === 0 && !(nurseryMulchAction && nurseryMulchAction.status === "due")
             && !(erectShadeAction && erectShadeAction.status === "due") && !(removeShadeAction && removeShadeAction.status === "due") &&
             e("div", { className:"empty-state", style:{ margin:"0 20px 20px" } },
               e("div", null, t("why.nothingToCheck") + " (" + stageLabelDisplay(seasonPhase.heroStageLabel) + ") " + t("why.nothingToCheckTail")))
