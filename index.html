@@ -497,6 +497,7 @@ const translations = {
 
     "why.tapToSeeWhy": "Tap to see why.", "why.logged2": "Logged",
     "home.farmArea": "Farm area", "home.nextAction": "Next action", "home.addToGetStarted": "Add fertilizer, spraying, or weeding from Settings.",
+    "home.alerts": "Alerts", "home.thisSeason": "This season",
 
     "settings.copied": "Copied.", "settings.copyFailedTapToSelect": "Couldn't copy automatically. Tap the text to select it, then copy.",
     "settings.tapToSelect": "Tap the text to select it, then copy.",
@@ -535,9 +536,10 @@ const translations = {
     "pace.inWindow": "In transplant-ready window",
     "pace.inWindowExplanation": "Your seedlings have reached the minimum guideline threshold (3 leaves). You can consider transplanting now \u2014 the guideline is a range, not a single target.",
 
-    "fertwindow.upcoming": "Upcoming", "fertwindow.open": "Open", "fertwindow.overdue": "Overdue",
+    "fertwindow.upcoming": "Upcoming", "fertwindow.open": "Open", "fertwindow.closingSoon": "Closing soon",
     "fertwindow.opensIn": "Opens in", "fertwindow.openCloses": "Open now \u2014 closes in", "fertwindow.closesToday": "Open now \u2014 closes today",
-    "fertwindow.overdueBy": "Overdue by", "fertwindow.windowLabel": "Window: day", "fertwindow.noSource": "No published guideline gives a specific window for this one \u2014 based on local practice."
+    "fertwindow.missed": "Missed", "fertwindow.missedNote": "This window closed with no fertilizer application logged in it.",
+    "fertwindow.windowLabel": "Window: day", "fertwindow.noSource": "No published guideline gives a specific window for this one \u2014 based on local practice."
   },
   sw: {
     "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
@@ -654,6 +656,7 @@ const translations = {
 
     "why.tapToSeeWhy": "Gusa kuona kwa nini.", "why.logged2": "Imewekwa",
     "home.farmArea": "Eneo la shamba", "home.nextAction": "Hatua inayofuata", "home.addToGetStarted": "Ongeza mbolea, dawa, au palizi kutoka Mipangilio.",
+    "home.alerts": "Tahadhari", "home.thisSeason": "Msimu huu",
 
     "settings.copied": "Imenakiliwa.", "settings.copyFailedTapToSelect": "Imeshindwa kunakili moja kwa moja. Gusa maandishi kuyachagua, kisha nakili.",
     "settings.tapToSelect": "Gusa maandishi kuyachagua, kisha nakili.",
@@ -692,9 +695,10 @@ const translations = {
     "pace.inWindow": "Kwenye kipindi cha kuhamisha miche",
     "pace.inWindowExplanation": "Miche yako yamefikia kiwango cha chini cha muongozo (majani 3). Unaweza kuanza kuhamisha miche sasa \u2014 muongozo ni wigo, si lengo moja.",
 
-    "fertwindow.upcoming": "Inakuja", "fertwindow.open": "Wazi", "fertwindow.overdue": "Imechelewa",
+    "fertwindow.upcoming": "Inakuja", "fertwindow.open": "Wazi", "fertwindow.closingSoon": "Inakaribia kufunga",
     "fertwindow.opensIn": "Inafunguka baada ya", "fertwindow.openCloses": "Wazi sasa \u2014 inafunga baada ya", "fertwindow.closesToday": "Wazi sasa \u2014 inafunga leo",
-    "fertwindow.overdueBy": "Imechelewa kwa", "fertwindow.windowLabel": "Dirisha: siku", "fertwindow.noSource": "Hakuna muongozo rasmi unaotoa dirisha maalum kwa hili \u2014 kinatokana na desturi ya hapa."
+    "fertwindow.missed": "Imekosekana", "fertwindow.missedNote": "Dirisha hili lilifungwa bila mbolea kuwekwa au kuandikwa.",
+    "fertwindow.windowLabel": "Dirisha: siku", "fertwindow.noSource": "Hakuna muongozo rasmi unaotoa dirisha maalum kwa hili \u2014 kinatokana na desturi ya hapa."
   }
 };
 function t(key){
@@ -1869,34 +1873,64 @@ const FERTILIZER_WINDOWS_SW = {
   }
 };
 
-function buildFertilizerWindowResult(w, daysSinceTransplant){
+function localizeFertWindow(w){
   const sw = currentLang === "sw" ? FERTILIZER_WINDOWS_SW[w.windowNumber] : null;
-  const display = sw ? Object.assign({}, w, sw) : w;
+  return sw ? Object.assign({}, w, sw) : w;
+}
+
+function buildFertilizerWindowResult(w, daysSinceTransplant){
+  const display = localizeFertWindow(w);
   let urgency;
-  if(daysSinceTransplant < w.startDay) urgency = "upcoming";
-  else if(daysSinceTransplant <= w.endDay) urgency = "open";
-  else urgency = "overdue";
+  if(daysSinceTransplant < w.startDay){
+    urgency = "upcoming";
+  } else {
+    // Within the window: escalates to "closingSoon" in the final 2 days so it can move from
+    // the calm Schedule zone into Alerts on Home — a window that's about to shut is genuinely
+    // time-sensitive, not just informational anymore.
+    const daysToClose = w.endDay - daysSinceTransplant;
+    urgency = daysToClose <= 2 ? "closingSoon" : "open";
+  }
   return {
     windowNumber: w.windowNumber, window: display, urgency: urgency,
     daysToOpen: w.startDay - daysSinceTransplant,
-    daysToClose: w.endDay - daysSinceTransplant,
-    daysPastClose: daysSinceTransplant - w.endDay
+    daysToClose: w.endDay - daysSinceTransplant
   };
 }
 
+// Matches each window against the calendar date range it actually covers, not just "the Nth
+// fertilizer event logged" — ordinal counting let a late application logged during window 2's
+// range get wrongly credited to window 1 if window 1 had been skipped entirely. A window with
+// no matching event once its date range has fully passed goes to `missed` (a permanent record,
+// shown on Why only — there's nothing left to act on) rather than just disappearing silently.
+// `current` is the single earliest window that's neither matched nor yet closed — shown on
+// Home. Windows are chronologically ordered and non-overlapping, so there's never ambiguity
+// about which one is "current."
 function evaluateFertilizerWindows(heroPhase, transplantEvent, events, seasonAnchorDate){
-  if(heroPhase !== "growing" || !transplantEvent) return [];
+  if(heroPhase !== "growing" || !transplantEvent) return { current: null, missed: [] };
   const anchor = transplantAnchorDate(transplantEvent);
   const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
-  const fertEvents = events.filter(function(ev){
-    return ev.categoryId === "fertilizer" && ev.date >= anchor && inSeason(ev);
-  }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+  // Strictly AFTER the transplant anchor date, not >=: a fertilizer event logged the same day
+  // as transplanting is almost certainly basal/bed-prep worked into the soil at transplant time
+  // (e.g. TSP, per KALRO), not a top-dress application. Caught via Kimi's review.
+  const fertDaysSinceTransplant = events.filter(function(ev){
+    return ev.categoryId === "fertilizer" && ev.date > anchor && inSeason(ev);
+  }).map(function(ev){ return daysBetween(anchor, ev.date); });
 
   const daysSinceTransplant = daysSince(anchor);
-  const doneCount = fertEvents.length;
-  if(doneCount >= FERTILIZER_WINDOWS.length) return [];
+  const missed = [];
+  let current = null;
 
-  return [buildFertilizerWindowResult(FERTILIZER_WINDOWS[doneCount], daysSinceTransplant)];
+  FERTILIZER_WINDOWS.forEach(function(w){
+    const matched = fertDaysSinceTransplant.some(function(d){ return d >= w.startDay && d <= w.endDay; });
+    if(matched) return;
+    if(daysSinceTransplant > w.endDay){
+      missed.push(localizeFertWindow(w));
+    } else if(!current){
+      current = buildFertilizerWindowResult(w, daysSinceTransplant);
+    }
+  });
+
+  return { current: current, missed: missed };
 }
 
 // ---- Fertilizer Safety ----
@@ -1923,7 +1957,7 @@ function fertilizersIncompatible(typeA, typeB){
   return (a.containsPhosphate && b.containsCalcium) || (a.containsCalcium && b.containsPhosphate);
 }
 
-function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent){
+function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent, heroPhase){
   const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
   const fertEvents = events.filter(function(ev){ return ev.categoryId === "fertilizer" && ev.fertilizerType && inSeason(ev); })
     .sort(function(a,b){ return a.date.localeCompare(b.date); });
@@ -1936,7 +1970,12 @@ function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent){
     // A risky product logged after the sowing day itself (not same-day bed prep) means it was
     // most likely applied at or near already-germinating seedlings, not mixed into the bed
     // before anything was planted.
-    if(profile && profile.riskyNearSeedlings && sowingEvent && ev.date > sowingEvent.date){
+    // Nursery-specific, so only relevant while the crop is actually still in the nursery — once
+    // it's been transplanted, this particular risk window has closed (the seedlings that were
+    // exposed either handled it or didn't; there's nothing left to act on). Caught via Kimi's
+    // review: this used to keep showing on Home indefinitely after transplanting, with no way
+    // to tell it was a closed, past-phase concern rather than something current.
+    if(profile && profile.riskyNearSeedlings && sowingEvent && ev.date > sowingEvent.date && heroPhase === "germination"){
       flags.push({
         id: "fertilizer_unsafe_near_seedlings",
         label: sw ? (name + " iliwekwa karibu na miche michanga") : (ev.fertilizerType + " applied near young seedlings"),
@@ -2114,12 +2153,12 @@ function HomeScreen(state){
     return evaluateThreatMap(heroPhase, heroStageLabel, state.observations, sowingEvent ? sowingEvent.date : null);
   }, [heroPhase, heroStageLabel, state.observations, sowingEvent]);
   const fertilizerSafetyFlags = useMemo(function(){
-    return evaluateFertilizerSafety(state.events, sowingEvent ? sowingEvent.date : null, sowingEvent).filter(function(f){ return f.severity === "critical" || f.severity === "high"; });
-  }, [state.events, sowingEvent]);
+    return evaluateFertilizerSafety(state.events, sowingEvent ? sowingEvent.date : null, sowingEvent, heroPhase).filter(function(f){ return f.severity === "critical" || f.severity === "high"; });
+  }, [state.events, sowingEvent, heroPhase]);
   const nurseryPace = useMemo(function(){
     return heroPhase === "germination" ? evaluateNurseryPace(sowingEvent, state.observations) : null;
   }, [heroPhase, sowingEvent, state.observations]);
-  const fertilizerWindows = useMemo(function(){
+  const fertWindowState = useMemo(function(){
     return evaluateFertilizerWindows(heroPhase, transplantEvent, state.events, sowingEvent ? sowingEvent.date : null);
   }, [heroPhase, transplantEvent, state.events, sowingEvent]);
 
@@ -2145,6 +2184,94 @@ function HomeScreen(state){
       return !expired && !hasNewEntry;
     });
   }, [threats, threatSeenLog, totalEntries]);
+
+  const alertCards = [];
+  const scheduleCards = [];
+
+  if(engineCheck && (engineCheck.overall === "full" || engineCheck.overall === "partial")){
+    scheduleCards.push(e("div", { key:"engine", className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("engine"); }), role:"button", tabIndex:0 },
+      e("div", { style:{ minWidth:0, flex:1 } },
+        e("div", { className:"advisory-title" }, engineCheck.label),
+        e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? t("why.matchesFull") : t("why.matchesPartial"))
+      ),
+      e("span", { className:"chev" }, "›")
+    ));
+  }
+
+  if(nurseryMulchAction && nurseryMulchAction.status === "due"){
+    scheduleCards.push(e("div", { key:"onetime-mulch", className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }), role:"button", tabIndex:0 },
+      e("div", { style:{ minWidth:0, flex:1 } },
+        e("div", { className:"advisory-title" }, nurseryMulchAction.action.label),
+        e("div", { className:"advisory-sub" }, t("why.seedlingsEmerged") + " " + relativeLabel(daysSince(nurseryMulchAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
+      ),
+      e("span", { className:"chev" }, "›")
+    ));
+  }
+
+  if(erectShadeAction && erectShadeAction.status === "due"){
+    scheduleCards.push(e("div", { key:"onetime-erectshade", className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-erectShade"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-erectShade"); }), role:"button", tabIndex:0 },
+      e("div", { style:{ minWidth:0, flex:1 } },
+        e("div", { className:"advisory-title" }, erectShadeAction.action.label),
+        e("div", { className:"advisory-sub" }, t("why.sunScorchLogged") + " " + relativeLabel(daysSince(erectShadeAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
+      ),
+      e("span", { className:"chev" }, "›")
+    ));
+  }
+  if(removeShadeAction && removeShadeAction.status === "due"){
+    scheduleCards.push(e("div", { key:"onetime-removeshade", className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeShadeGradually"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeShadeGradually"); }), role:"button", tabIndex:0 },
+      e("div", { style:{ minWidth:0, flex:1 } },
+        e("div", { className:"advisory-title" }, removeShadeAction.action.label),
+        e("div", { className:"advisory-sub" }, t("why.shadeErectedMeta") + " " + relativeLabel(daysSince(removeShadeAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
+      ),
+      e("span", { className:"chev" }, "›")
+    ));
+  }
+
+  // Threat Map — auto-hides after 24h or a new event/observation (visibleThreats already
+  // filters that); split here by severity, since only critical/high belong in Alerts.
+  visibleThreats.forEach(function(threat){
+    const card = e("div", { key: threat.id, className:"advisory-card threat-" + threat.severity, onClick: function(){ state.onGoToWhy("threat-" + threat.id); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("threat-" + threat.id); }), role:"button", tabIndex:0 },
+      e("div", { style:{ minWidth:0, flex:1 } },
+        e("div", { className:"advisory-title" }, threat.label),
+        e("div", { className:"advisory-sub" }, t("why.fromObservationShort") + " " + relativeLabel(daysSince(threat.observationDate)) + ". " + t("why.tapToSeeWhy"))
+      ),
+      e("span", { className:"chev" }, "›")
+    );
+    if(threat.severity === "critical" || threat.severity === "high") alertCards.push(card); else scheduleCards.push(card);
+  });
+
+  // Fertilizer Safety — critical/high severity flags only (already filtered upstream); always
+  // Alerts, never Schedule.
+  fertilizerSafetyFlags.forEach(function(f, i){
+    alertCards.push(e("div", { key: f.id + i, className:"advisory-card threat-" + f.severity, onClick: function(){ state.onGoToWhy("fertsafety-" + i); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertsafety-" + i); }), role:"button", tabIndex:0 },
+      e("div", { style:{ minWidth:0, flex:1 } },
+        e("div", { className:"advisory-title" }, f.label),
+        e("div", { className:"advisory-sub" }, t("why.logged2") + " " + relativeLabel(daysSince(f.eventDate)) + ". " + t("why.tapToSeeWhy"))
+      ),
+      e("span", { className:"chev" }, "›")
+    ));
+  });
+
+  // Fertilizer window — the single current window (never more than one at once). Escalates
+  // from Schedule to Alerts once within 2 days of closing; vanishes entirely once the window
+  // fully closes (a miss is recorded on Why instead — see evaluateFertilizerWindows).
+  if(fertWindowState.current){
+    const fw = fertWindowState.current;
+    const cls = fw.urgency === "closingSoon" ? "advisory-card threat-critical" : fw.urgency === "open" ? "advisory-card partial" : "advisory-card";
+    const subText = fw.urgency === "closingSoon"
+      ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")) + ". " + t("why.tapToSeeWhy")
+      : fw.urgency === "open"
+        ? t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days") + ". " + t("why.tapToSeeWhy")
+        : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days") + ". " + t("why.tapToSeeWhy");
+    const card = e("div", { key:"fertwindow-" + fw.windowNumber, className: cls, onClick: function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }), role:"button", tabIndex:0 },
+      e("div", { style:{ minWidth:0, flex:1 } },
+        e("div", { className:"advisory-title" }, fw.window.label),
+        e("div", { className:"advisory-sub" }, subText)
+      ),
+      e("span", { className:"chev" }, "›")
+    );
+    if(fw.urgency === "closingSoon") alertCards.push(card); else scheduleCards.push(card);
+  }
 
   return e("div", { className:"home-wrap" },
     e("div", { className:"header" },
@@ -2191,92 +2318,19 @@ function HomeScreen(state){
         )
       ),
 
-      // Engine advisory — only shown when a logged Observation actually matches or partially
-      // matches the next stage's expected characteristics. Tapping it opens the full reasoning
-      // on the Why tab. This never changes the season phase itself — see evaluateBaselineCheck.
-      engineCheck && (engineCheck.overall === "full" || engineCheck.overall === "partial") &&
-        e("div", { className:"advisory-card " + engineCheck.overall, onClick: function(){ state.onGoToWhy("engine"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("engine"); }), role:"button", tabIndex:0 },
-          e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, engineCheck.label),
-            e("div", { className:"advisory-sub" }, engineCheck.overall === "full" ? t("why.matchesFull") : t("why.matchesPartial"))
-          ),
-          e("span", { className:"chev" }, "›")
-        ),
+      // Alerts — critical/high safety flags, urgent threats, and any fertilizer window within
+      // 2 days of closing. Only rendered at all if there's something in it.
+      alertCards.length > 0 && e(React.Fragment, { key:"alerts-zone" },
+        e("div", { className:"section-label tight" }, t("home.alerts")),
+        e("div", null, alertCards)
+      ),
 
-      // One-time nursery actions (e.g. mulch removal) — triggered by a logged milestone
-      // (emergence), not a calendar day count, and gone for good once actually done.
-      nurseryMulchAction && nurseryMulchAction.status === "due" &&
-        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeNurseryMulch"); }), role:"button", tabIndex:0 },
-          e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, nurseryMulchAction.action.label),
-            e("div", { className:"advisory-sub" }, t("why.seedlingsEmerged") + " " + relativeLabel(daysSince(nurseryMulchAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
-          ),
-          e("span", { className:"chev" }, "›")
-        ),
-
-      // Sunlight/shade lifecycle — triggered by what a farmer actually observed, not a fixed
-      // calendar day, since sun scorch severity depends on weather, not the day count.
-      erectShadeAction && erectShadeAction.status === "due" &&
-        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-erectShade"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-erectShade"); }), role:"button", tabIndex:0 },
-          e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, erectShadeAction.action.label),
-            e("div", { className:"advisory-sub" }, t("why.sunScorchLogged") + " " + relativeLabel(daysSince(erectShadeAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
-          ),
-          e("span", { className:"chev" }, "›")
-        ),
-      removeShadeAction && removeShadeAction.status === "due" &&
-        e("div", { className:"advisory-card partial", onClick: function(){ state.onGoToWhy("onetime-removeShadeGradually"); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("onetime-removeShadeGradually"); }), role:"button", tabIndex:0 },
-          e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, removeShadeAction.action.label),
-            e("div", { className:"advisory-sub" }, t("why.shadeErectedMeta") + " " + relativeLabel(daysSince(removeShadeAction.triggerEvent.date)) + ". " + t("why.tapToSeeWhy"))
-          ),
-          e("span", { className:"chev" }, "›")
-        ),
-
-      // Threat Map — pest/disease diagnosis from the latest logged symptom observation.
-      // Filtered to visibleThreats: cards auto-hide after 24h or a new event/observation;
-      // full detail always stays available on the Why page regardless.
-      visibleThreats.map(function(threat){
-        return e("div", { key: threat.id, className:"advisory-card threat-" + threat.severity, onClick: function(){ state.onGoToWhy("threat-" + threat.id); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("threat-" + threat.id); }), role:"button", tabIndex:0 },
-          e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, threat.label),
-            e("div", { className:"advisory-sub" }, t("why.fromObservationShort") + " " + relativeLabel(daysSince(threat.observationDate)) + ". " + t("why.tapToSeeWhy"))
-          ),
-          e("span", { className:"chev" }, "›")
-        );
-      }),
-
-      // Fertilizer Safety — critical/high severity flags only; the milder timing guardrails
-      // stay Why-only since there's nothing urgent left to act on there.
-      fertilizerSafetyFlags.map(function(f, i){
-        return e("div", { key: f.id + i, className:"advisory-card threat-" + f.severity, onClick: function(){ state.onGoToWhy("fertsafety-" + i); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertsafety-" + i); }), role:"button", tabIndex:0 },
-          e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, f.label),
-            e("div", { className:"advisory-sub" }, t("why.logged2") + " " + relativeLabel(daysSince(f.eventDate)) + ". " + t("why.tapToSeeWhy"))
-          ),
-          e("span", { className:"chev" }, "›")
-        );
-      }),
-
-      // Fertilizer windows — proactive range showing when the next application opens (local
-      // practice) and, where sourced, the official guideline's latest day. Badge escalates
-      // green -> amber -> red as the window approaches, opens, and passes; disappears once
-      // actually logged.
-      fertilizerWindows.map(function(fw){
-        const cls = fw.urgency === "overdue" ? "advisory-card threat-critical" : fw.urgency === "open" ? "advisory-card partial" : "advisory-card";
-        const subText = fw.urgency === "overdue"
-          ? t("fertwindow.overdueBy") + " " + fw.daysPastClose + " " + t("ev.days") + ". " + t("why.tapToSeeWhy")
-          : fw.urgency === "open"
-            ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")) + ". " + t("why.tapToSeeWhy")
-            : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days") + ". " + t("why.tapToSeeWhy");
-        return e("div", { key:"fertwindow-" + fw.windowNumber, className: cls, onClick: function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }), role:"button", tabIndex:0 },
-          e("div", { style:{ minWidth:0, flex:1 } },
-            e("div", { className:"advisory-title" }, fw.window.label),
-            e("div", { className:"advisory-sub" }, subText)
-          ),
-          e("span", { className:"chev" }, "›")
-        );
-      }),
+      // This Season — calm/informational items: engine advisory, one-time actions, medium/low
+      // threats, and fertilizer windows that aren't yet urgent. Only rendered if non-empty.
+      scheduleCards.length > 0 && e(React.Fragment, { key:"schedule-zone" },
+        e("div", { className:"section-label tight" }, t("home.thisSeason")),
+        e("div", null, scheduleCards)
+      ),
 
       // Farm area — only shown once beds have been added via Settings > Calculator > Area calculator.
       (state.areaBeds && state.areaBeds.length > 0) && e("div", { className:"calc-total", style:{ margin:"12px 16px 18px" } },
@@ -2594,17 +2648,18 @@ function WhyPaceCard(props){
 
 // Fertilizer window card — shows the window as a range: opens on the locally-practiced day,
 // and — where sourced — the official guideline's latest day. Badge color escalates as the
-// window approaches, opens, and passes: plenty of time (green) -> open now (amber) ->
-// overdue, not yet logged (red).
+// window approaches, opens, and enters its final 2 days: plenty of time (green) -> open (amber)
+// -> closing soon (red). Once the window fully closes, it's a `missed` record instead — see
+// WhyMissedFertilizerWindowCard.
 function WhyFertilizerWindowCard(props){
   const fw = props.fertWindow;
-  const badgeClass = fw.urgency === "overdue" ? "none" : fw.urgency === "open" ? "partial" : "full";
-  const badgeText = fw.urgency === "overdue" ? t("fertwindow.overdue")
+  const badgeClass = fw.urgency === "closingSoon" ? "none" : fw.urgency === "open" ? "partial" : "full";
+  const badgeText = fw.urgency === "closingSoon" ? t("fertwindow.closingSoon")
     : fw.urgency === "open" ? t("fertwindow.open") : t("fertwindow.upcoming");
-  const daysLine = fw.urgency === "overdue"
-    ? t("fertwindow.overdueBy") + " " + fw.daysPastClose + " " + t("ev.days")
+  const daysLine = fw.urgency === "closingSoon"
+    ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days"))
     : fw.urgency === "open"
-      ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days"))
+      ? t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")
       : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days");
   const hasSource = fw.window.sourceKeys && fw.window.sourceKeys.length > 0;
   return e(WhyCard, { id:"why-fertwindow-section", title: fw.window.label, badgeClass: badgeClass, badgeText: badgeText },
@@ -2613,6 +2668,25 @@ function WhyFertilizerWindowCard(props){
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
     hasSource
       ? e(WhySourceLinks, { sourceKeys: fw.window.sourceKeys })
+      : e("div", { className:"hint" }, t("fertwindow.noSource"))
+  );
+}
+
+// Missed fertilizer window — a permanent retrospective record for a window that closed with
+// no matching fertilizer event logged in its date range. Shown on Why only (nothing left to
+// act on for a window that's already shut); this is fully derivable from the transplant date
+// and event log, so it isn't separately stored anywhere — recomputed live each time, same as
+// everything else here, which also means any future season-report feature can reconstruct it
+// the same way without needing its own record-keeping.
+function WhyMissedFertilizerWindowCard(props){
+  const w = props.window;
+  const hasSource = w.sourceKeys && w.sourceKeys.length > 0;
+  return e(WhyCard, { id:"why-fertwindow-missed-" + w.windowNumber, title: w.label, badgeClass:"none", badgeText: t("fertwindow.missed") },
+    e("div", { className:"hint" }, t("fertwindow.missedNote") + " (" + t("fertwindow.windowLabel") + " " + w.startDay + "\u2013" + w.endDay + ")."),
+    e("div", { className:"hint", style:{ marginTop:"8px" } }, w.guidance),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    hasSource
+      ? e(WhySourceLinks, { sourceKeys: w.sourceKeys })
       : e("div", { className:"hint" }, t("fertwindow.noSource"))
   );
 }
@@ -2653,14 +2727,14 @@ function WhyScreen(props){
     .sort(function(a, b){ return daysSince(latestByCat[b].date) - daysSince(latestByCat[a].date); });
   const guardrailFlags = useMemo(function(){
     const timing = evaluateGuardrails(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.transplantEvent, seasonPhase.harvestEvent);
-    const fertSafety = evaluateFertilizerSafety(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.sowingEvent);
+    const fertSafety = evaluateFertilizerSafety(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.sowingEvent, seasonPhase.heroPhase);
     return fertSafety.concat(timing);
-  }, [state.events, seasonPhase.sowingEvent, seasonPhase.transplantEvent, seasonPhase.harvestEvent]);
+  }, [state.events, seasonPhase.sowingEvent, seasonPhase.transplantEvent, seasonPhase.harvestEvent, seasonPhase.heroPhase]);
   const nurseryPace = useMemo(function(){
     return seasonPhase.heroPhase === "germination" ? evaluateNurseryPace(seasonPhase.sowingEvent, state.observations) : null;
   }, [seasonPhase.heroPhase, seasonPhase.sowingEvent, state.observations]);
   const showPaceCard = nurseryPace && nurseryPace.status !== "insufficient";
-  const fertilizerWindows = useMemo(function(){
+  const fertWindowState = useMemo(function(){
     return evaluateFertilizerWindows(seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent]);
 
@@ -2697,8 +2771,10 @@ function WhyScreen(props){
             : e("div", { style:{ margin:"0 20px 12px" } }, e(WhyAdvisoryCard, { engineCheck: engineCheck })),
           showPaceCard &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyPaceCard, { pace: nurseryPace })),
-          fertilizerWindows.map(function(fw){
-            return e("div", { key:"fertwindow-" + fw.windowNumber, style:{ margin:"0 20px 12px" } }, e(WhyFertilizerWindowCard, { fertWindow: fw }));
+          fertWindowState.current &&
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyFertilizerWindowCard, { fertWindow: fertWindowState.current })),
+          fertWindowState.missed.map(function(w){
+            return e("div", { key:"fertwindow-missed-" + w.windowNumber, style:{ margin:"0 20px 12px" } }, e(WhyMissedFertilizerWindowCard, { window: w }));
           }),
           nurseryMulchAction && nurseryMulchAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: nurseryMulchAction, metaText:t("why.seedlingsEmerged") })),
@@ -2706,7 +2782,7 @@ function WhyScreen(props){
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: erectShadeAction, metaText:t("why.sunScorchLogged") })),
           removeShadeAction && removeShadeAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 20px" } }, e(WhyOneTimeActionCard, { data: removeShadeAction, metaText:t("why.shadeErectedMeta") })),
-          !engineCheck && !showPaceCard && fertilizerWindows.length === 0 && !(nurseryMulchAction && nurseryMulchAction.status === "due")
+          !engineCheck && !showPaceCard && !fertWindowState.current && fertWindowState.missed.length === 0 && !(nurseryMulchAction && nurseryMulchAction.status === "due")
             && !(erectShadeAction && erectShadeAction.status === "due") && !(removeShadeAction && removeShadeAction.status === "due") &&
             e("div", { className:"empty-state", style:{ margin:"0 20px 20px" } },
               e("div", null, t("why.nothingToCheck") + " (" + stageLabelDisplay(seasonPhase.heroStageLabel) + ") " + t("why.nothingToCheckTail")))
