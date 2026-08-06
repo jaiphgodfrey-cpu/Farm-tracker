@@ -535,8 +535,9 @@ const translations = {
     "pace.inWindow": "In transplant-ready window",
     "pace.inWindowExplanation": "Your seedlings have reached the minimum guideline threshold (3 leaves). You can consider transplanting now \u2014 the guideline is a range, not a single target.",
 
-    "fertwindow.upcoming": "Upcoming", "fertwindow.dueSoon": "Due soon", "fertwindow.overdue": "Overdue",
-    "fertwindow.dueIn": "Due in", "fertwindow.dueToday": "Due today", "fertwindow.overdueBy": "Overdue by"
+    "fertwindow.upcoming": "Upcoming", "fertwindow.open": "Open", "fertwindow.overdue": "Overdue",
+    "fertwindow.opensIn": "Opens in", "fertwindow.openCloses": "Open now \u2014 closes in", "fertwindow.closesToday": "Open now \u2014 closes today",
+    "fertwindow.overdueBy": "Overdue by", "fertwindow.windowLabel": "Window: day", "fertwindow.noSource": "No published guideline gives a specific window for this one \u2014 based on local practice."
   },
   sw: {
     "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
@@ -691,8 +692,9 @@ const translations = {
     "pace.inWindow": "Kwenye kipindi cha kuhamisha miche",
     "pace.inWindowExplanation": "Miche yako yamefikia kiwango cha chini cha muongozo (majani 3). Unaweza kuanza kuhamisha miche sasa \u2014 muongozo ni wigo, si lengo moja.",
 
-    "fertwindow.upcoming": "Inakuja", "fertwindow.dueSoon": "Inakaribia", "fertwindow.overdue": "Imechelewa",
-    "fertwindow.dueIn": "Inatakiwa baada ya", "fertwindow.dueToday": "Inatakiwa leo", "fertwindow.overdueBy": "Imechelewa kwa"
+    "fertwindow.upcoming": "Inakuja", "fertwindow.open": "Wazi", "fertwindow.overdue": "Imechelewa",
+    "fertwindow.opensIn": "Inafunguka baada ya", "fertwindow.openCloses": "Wazi sasa \u2014 inafunga baada ya", "fertwindow.closesToday": "Wazi sasa \u2014 inafunga leo",
+    "fertwindow.overdueBy": "Imechelewa kwa", "fertwindow.windowLabel": "Dirisha: siku", "fertwindow.noSource": "Hakuna muongozo rasmi unaotoa dirisha maalum kwa hili \u2014 kinatokana na desturi ya hapa."
   }
 };
 function t(key){
@@ -1809,54 +1811,77 @@ function evaluateGuardrails(events, seasonAnchorDate, transplantEvent, harvestEv
 }
 
 // ---- Fertilizer windows (proactive, calendar-based reminders) ----
-// GUARDRAILS above only complains about a fertilizer application AFTER it's been logged late.
-// This looks forward from the transplant date instead, so the farmer can see the window
-// coming rather than finding out afterward that they missed it. Uses the exact same sourced
-// numbers already used in GUARDRAILS.fertilizer_too_late and the fertilizer calculator's
-// suggested rates (30 / 45 days after transplanting, JICA/SHEP guide) — this is not a new
-// guideline, just a forward-looking view of one that already existed.
-// Deliberately calendar-anchored rather than observation-anchored: unlike morphology checks
-// (leaf count, height, which genuinely vary by how a season is going), the sources themselves
-// give fertilizer timing as a day-count from transplanting, so counting down days is honest
-// here in a way it wouldn't be for something like transplant readiness.
-// Window 2 only ever appears once window 1 has actually been logged (by design decision) —
-// showing two countdowns before the farmer has done the first one adds noise, not clarity.
+// GUARDRAILS above only complains about a fertilizer application AFTER it's been logged late,
+// and stays exactly as sourced (KALRO/JICA/FiBL, 30/45 days) — untouched, still a valid
+// retrospective check against the official published guideline.
+// This card looks forward instead, and blends two things the user asked to be merged honestly:
+// their own local practice (NPK within ~10 days, CAN splits opening day 21 / day 35) and the
+// officially sourced KALRO/JICA numbers (30 / 45 days). Rather than averaging into a single
+// invented midpoint neither source actually supports, each window is a RANGE: opens on the
+// locally-practiced day, and — for the two CAN windows — the sourced day is shown as the latest
+// day per the official guide. The NPK window has no sourced day (KALRO says "at transplanting",
+// not a 10-day window), so it's labeled local practice only, honestly, with no source citation.
+// Windows appear one at a time, in order, gated on the previous one actually being logged (by
+// design decision) — showing three countdowns before the farmer has done any of them is noise.
 const FERTILIZER_WINDOWS = [
   {
     windowNumber: 1,
-    targetDay: 30,
-    label: "Top-dress 1 (DAP/CAN)",
-    guidance: "The first split top-dress application is typically due around 30 days after transplanting.",
-    sourceKeys: ["G1", "KE1", "G7"]
+    startDay: 0,
+    endDay: 10,
+    endIsSourced: false,
+    label: "NPK (basal top-dress)",
+    guidance: "Local practice here is to apply the first NPK application within about 10 days of transplanting — the official published guide only says \u201cat transplanting\u201d, without giving a window, so this timing is local practice rather than a cited guideline.",
+    sourceKeys: []
   },
   {
     windowNumber: 2,
-    targetDay: 45,
-    label: "Top-dress 2 (DAP/CAN)",
-    guidance: "The second split top-dress application is typically due around 45 days after transplanting. Guidance is to stop fertilizing entirely at least 4 weeks before harvest after this.",
+    startDay: 21,
+    endDay: 30,
+    endIsSourced: true,
+    label: "CAN application 1",
+    guidance: "Local practice here is to apply from day 21 (start of the 3rd week) after transplanting. The official guide (KALRO/JICA) gives day 30 as the guideline timing for this first top-dress.",
+    sourceKeys: ["G1", "KE1", "G7"]
+  },
+  {
+    windowNumber: 3,
+    startDay: 35,
+    endDay: 45,
+    endIsSourced: true,
+    label: "CAN application 2",
+    guidance: "Local practice here is to apply from day 35 (start of the 5th week) after transplanting. The official guide (KALRO/JICA) gives day 45 as the guideline timing for this second top-dress. Guidance is to stop fertilizing entirely at least 4 weeks before harvest after this.",
     sourceKeys: ["G1", "KE1", "G7"]
   }
 ];
 
 const FERTILIZER_WINDOWS_SW = {
   1: {
-    label: "Kuweka mbolea ya kwanza (DAP/CAN)",
-    guidance: "Uwekaji wa kwanza wa mbolea ya kugawanya kwa kawaida huhitajika karibu siku 30 baada ya kuhamisha miche."
+    label: "NPK (mbolea ya msingi)",
+    guidance: "Desturi ya hapa ni kuweka NPK ya kwanza ndani ya siku 10 baada ya kuhamisha miche \u2014 muongozo rasmi unasema tu \u201cwakati wa kuhamisha miche\u201d bila kutoa dirisha la siku, hivyo muda huu ni desturi ya hapa, si muongozo uliotajwa rasmi.",
+    sourceKeys: []
   },
   2: {
-    label: "Kuweka mbolea ya pili (DAP/CAN)",
-    guidance: "Uwekaji wa pili wa mbolea ya kugawanya kwa kawaida huhitajika karibu siku 45 baada ya kuhamisha miche. Muongozo unashauri kusimamisha mbolea kabisa angalau wiki 4 kabla ya kuvuna baada ya hapo."
+    label: "Mbolea ya CAN 1",
+    guidance: "Desturi ya hapa ni kuweka kuanzia siku 21 (mwanzo wa wiki ya 3) baada ya kuhamisha miche. Muongozo rasmi (KALRO/JICA) unatoa siku 30 kama muda unaoshauriwa wa uwekaji huu wa kwanza."
+  },
+  3: {
+    label: "Mbolea ya CAN 2",
+    guidance: "Desturi ya hapa ni kuweka kuanzia siku 35 (mwanzo wa wiki ya 5) baada ya kuhamisha miche. Muongozo rasmi (KALRO/JICA) unatoa siku 45 kama muda unaoshauriwa wa uwekaji huu wa pili. Muongozo unashauri kusimamisha mbolea kabisa angalau wiki 4 kabla ya kuvuna baada ya hapo."
   }
 };
 
-function buildFertilizerWindowResult(w, daysUntil){
+function buildFertilizerWindowResult(w, daysSinceTransplant){
   const sw = currentLang === "sw" ? FERTILIZER_WINDOWS_SW[w.windowNumber] : null;
   const display = sw ? Object.assign({}, w, sw) : w;
   let urgency;
-  if(daysUntil < 0) urgency = "overdue";
-  else if(daysUntil <= 7) urgency = "dueSoon";
-  else urgency = "upcoming";
-  return { windowNumber: w.windowNumber, window: display, daysUntil: daysUntil, urgency: urgency };
+  if(daysSinceTransplant < w.startDay) urgency = "upcoming";
+  else if(daysSinceTransplant <= w.endDay) urgency = "open";
+  else urgency = "overdue";
+  return {
+    windowNumber: w.windowNumber, window: display, urgency: urgency,
+    daysToOpen: w.startDay - daysSinceTransplant,
+    daysToClose: w.endDay - daysSinceTransplant,
+    daysPastClose: daysSinceTransplant - w.endDay
+  };
 }
 
 function evaluateFertilizerWindows(heroPhase, transplantEvent, events, seasonAnchorDate){
@@ -1868,16 +1893,10 @@ function evaluateFertilizerWindows(heroPhase, transplantEvent, events, seasonAnc
   }).sort(function(a,b){ return a.date.localeCompare(b.date); });
 
   const daysSinceTransplant = daysSince(anchor);
-  const results = [];
+  const doneCount = fertEvents.length;
+  if(doneCount >= FERTILIZER_WINDOWS.length) return [];
 
-  const window1Done = fertEvents.length >= 1;
-  if(!window1Done){
-    results.push(buildFertilizerWindowResult(FERTILIZER_WINDOWS[0], FERTILIZER_WINDOWS[0].targetDay - daysSinceTransplant));
-  } else if(fertEvents.length < 2){
-    results.push(buildFertilizerWindowResult(FERTILIZER_WINDOWS[1], FERTILIZER_WINDOWS[1].targetDay - daysSinceTransplant));
-  }
-
-  return results;
+  return [buildFertilizerWindowResult(FERTILIZER_WINDOWS[doneCount], daysSinceTransplant)];
 }
 
 // ---- Fertilizer Safety ----
@@ -2239,15 +2258,17 @@ function HomeScreen(state){
         );
       }),
 
-      // Fertilizer windows — proactive countdown to the next sourced top-dress date, shown from
-      // day 1 of transplanting through the growing phase. Badge escalates green -> amber -> red
-      // as the window approaches and passes; disappears once actually logged.
+      // Fertilizer windows — proactive range showing when the next application opens (local
+      // practice) and, where sourced, the official guideline's latest day. Badge escalates
+      // green -> amber -> red as the window approaches, opens, and passes; disappears once
+      // actually logged.
       fertilizerWindows.map(function(fw){
-        const cls = fw.urgency === "overdue" ? "advisory-card threat-critical" : fw.urgency === "dueSoon" ? "advisory-card partial" : "advisory-card";
+        const cls = fw.urgency === "overdue" ? "advisory-card threat-critical" : fw.urgency === "open" ? "advisory-card partial" : "advisory-card";
         const subText = fw.urgency === "overdue"
-          ? t("fertwindow.overdueBy") + " " + Math.abs(fw.daysUntil) + " " + t("ev.days") + ". " + t("why.tapToSeeWhy")
-          : fw.daysUntil === 0 ? t("fertwindow.dueToday") + ". " + t("why.tapToSeeWhy")
-          : t("fertwindow.dueIn") + " " + fw.daysUntil + " " + t("ev.days") + ". " + t("why.tapToSeeWhy");
+          ? t("fertwindow.overdueBy") + " " + fw.daysPastClose + " " + t("ev.days") + ". " + t("why.tapToSeeWhy")
+          : fw.urgency === "open"
+            ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")) + ". " + t("why.tapToSeeWhy")
+            : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days") + ". " + t("why.tapToSeeWhy");
         return e("div", { key:"fertwindow-" + fw.windowNumber, className: cls, onClick: function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }), role:"button", tabIndex:0 },
           e("div", { style:{ minWidth:0, flex:1 } },
             e("div", { className:"advisory-title" }, fw.window.label),
@@ -2571,23 +2592,28 @@ function WhyPaceCard(props){
   );
 }
 
-// Fertilizer window card — proactive countdown to the next sourced top-dress window, shown
-// only during the growing phase. Badge color escalates as the window approaches/passes:
-// plenty of time (default green) -> due within a week (amber) -> overdue, not yet logged (red).
+// Fertilizer window card — shows the window as a range: opens on the locally-practiced day,
+// and — where sourced — the official guideline's latest day. Badge color escalates as the
+// window approaches, opens, and passes: plenty of time (green) -> open now (amber) ->
+// overdue, not yet logged (red).
 function WhyFertilizerWindowCard(props){
   const fw = props.fertWindow;
-  const badgeClass = fw.urgency === "overdue" ? "none" : fw.urgency === "dueSoon" ? "partial" : "full";
+  const badgeClass = fw.urgency === "overdue" ? "none" : fw.urgency === "open" ? "partial" : "full";
   const badgeText = fw.urgency === "overdue" ? t("fertwindow.overdue")
-    : fw.urgency === "dueSoon" ? t("fertwindow.dueSoon") : t("fertwindow.upcoming");
+    : fw.urgency === "open" ? t("fertwindow.open") : t("fertwindow.upcoming");
   const daysLine = fw.urgency === "overdue"
-    ? t("fertwindow.overdueBy") + " " + Math.abs(fw.daysUntil) + " " + t("ev.days")
-    : fw.daysUntil === 0 ? t("fertwindow.dueToday")
-    : t("fertwindow.dueIn") + " " + fw.daysUntil + " " + t("ev.days");
+    ? t("fertwindow.overdueBy") + " " + fw.daysPastClose + " " + t("ev.days")
+    : fw.urgency === "open"
+      ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days"))
+      : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days");
+  const hasSource = fw.window.sourceKeys && fw.window.sourceKeys.length > 0;
   return e(WhyCard, { id:"why-fertwindow-section", title: fw.window.label, badgeClass: badgeClass, badgeText: badgeText },
-    e("div", { className:"hint" }, daysLine + "."),
+    e("div", { className:"hint" }, daysLine + " (" + t("fertwindow.windowLabel") + " " + fw.window.startDay + "\u2013" + fw.window.endDay + ")."),
     e("div", { className:"hint", style:{ marginTop:"8px" } }, fw.window.guidance),
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
-    e(WhySourceLinks, { sourceKeys: fw.window.sourceKeys })
+    hasSource
+      ? e(WhySourceLinks, { sourceKeys: fw.window.sourceKeys })
+      : e("div", { className:"hint" }, t("fertwindow.noSource"))
   );
 }
 
