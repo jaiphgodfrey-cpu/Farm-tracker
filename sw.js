@@ -3,7 +3,7 @@
 // Bump CACHE_NAME (e.g. v1 -> v2) any time you change index.html and want
 // visitors to get the fresh version faster. Old caches are cleaned up
 // automatically on the next visit after a bump.
-const CACHE_NAME = "japhe-farm-v12";
+const CACHE_NAME = "japhe-farm-v13";
 
 // Same-origin files that make up the app itself.
 const APP_SHELL = [

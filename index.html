@@ -2367,9 +2367,15 @@ function HomeScreen(state){
   });
 
   // Fertilizer Safety — critical/high severity flags only (already filtered upstream); always
-  // Alerts, never Schedule.
+  // Alerts, never Schedule. Focus id keyed by the flag's own stable id + eventDate (not array
+  // index), since Home's filtered list and Why's full guardrailFlags list are indexed
+  // differently — a positional index here would auto-expand the wrong card on Why, which was
+  // the actual bug: the card DID scroll to the right place, but "fertsafety-<i>" never matched
+  // any real WhyCard id, so the auto-expand added earlier for Home taps silently never fired
+  // for this one card type.
   fertilizerSafetyFlags.forEach(function(f, i){
-    alertCards.push(e("div", { key: f.id + i, className:"advisory-card threat-" + f.severity, onClick: function(){ state.onGoToWhy("fertsafety-" + i); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertsafety-" + i); }), role:"button", tabIndex:0 },
+    const focusKey = "fertsafety-" + f.id + "-" + f.eventDate;
+    alertCards.push(e("div", { key: f.id + i, className:"advisory-card threat-" + f.severity, onClick: function(){ state.onGoToWhy(focusKey); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy(focusKey); }), role:"button", tabIndex:0 },
       e("div", { style:{ minWidth:0, flex:1 } },
         e("div", { className:"advisory-title" }, f.label),
         e("div", { className:"advisory-sub" }, t("why.logged2") + " " + relativeLabel(daysSince(f.eventDate)) + ". " + t("why.tapToSeeWhy"))
@@ -2743,10 +2749,12 @@ function WhyRoutineActionCard(props){
 }
 
 // A retrospective timing/safety guardrail note — same collapsible pattern as everything else,
-// where it used to always render fully expanded.
+// where it used to always render fully expanded. Id keyed by the flag's own stable id +
+// eventDate (matching Home's "fertsafety-<id>-<date>" focus key exactly), not array index —
+// see the comment on the Home-side fertilizerSafetyFlags render for why.
 function WhyGuardrailCard(props){
   const g = props.guardrail;
-  return e(WhyCard, { id:"why-guardrail-" + props.idx, extraClass:"guardrail-" + g.severity, title: g.label,
+  return e(WhyCard, { id:"why-guardrail-" + g.id + "-" + g.eventDate, extraClass:"guardrail-" + g.severity, title: g.label,
       badgeClass: severityBadgeClass(g.severity), badgeText: severityBadgeText(g.severity), summaryLine: t("why.teaserGuardrail") },
     e("div", { className:"hint", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.logged2") + " " + formatDateDisplay(g.eventDate)),
     e("div", { className:"why-subhead", style:{ marginBottom:"6px" } }, t("why.forNextTime")),
@@ -2926,7 +2934,11 @@ function WhyScreen(props){
     focus.id === "engine" ? "why-engine"
       : focus.id.indexOf("onetime-") === 0 ? "why-" + focus.id
       : focus.id.indexOf("threat-") === 0 ? "why-" + focus.id
-      : focus.id.indexOf("fertsafety") === 0 ? "why-guardrails-section"
+      // Was "why-guardrails-section" (a section header, not any real card's id) — that's why
+      // tapping a Fertilizer Safety alert on Home never expanded the matching card even though
+      // it scrolled to the right place. Now strips the "fertsafety-" prefix and reuses the
+      // remainder directly, matching WhyGuardrailCard's own id exactly.
+      : focus.id.indexOf("fertsafety-") === 0 ? "why-guardrail-" + focus.id.slice("fertsafety-".length)
       : focus.id.indexOf("fertwindow") === 0 ? "why-fertwindow-section"
       : "why-action-" + focus.id
   ) : null;
