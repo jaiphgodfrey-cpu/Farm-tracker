@@ -278,6 +278,7 @@ const useState = React.useState;
 const useEffect = React.useEffect;
 const useMemo = React.useMemo;
 const useRef = React.useRef;
+const useContext = React.useContext;
 
 const STORAGE_KEY = "japhe_farm_v1";
 const LANG_KEY = "japhe_farm_lang";
@@ -408,6 +409,28 @@ const translations = {
     "why.noActiveSeason": "No active season yet. Log a Sowing date to start.",
     "why.routineActions": "Routine actions", "why.noRoutineActions": "No routine actions logged yet.",
     "why.guardrailNotes": "Guardrail notes", "why.lastDone": "Last done",
+    "why.teaserEngine": "Tap to see what the guideline expects vs what you've recorded.",
+    "why.teaserOneTime": "Tap to see what triggered this and what to do.",
+    "why.teaserThreat": "Tap to see the full diagnosis and what to do about it.",
+    "why.teaserRoutine": "Tap to see the sourced guidance for this.",
+    "why.teaserGuardrail": "Tap to see what happened and how to avoid it next time.",
+    "why.teaserPaceWindow": "Tap to see why you're in the ready window.",
+    "why.teaserPaceRate": "Tap to see your growth rate vs the typical pace.",
+    "why.teaserFertWindow": "Tap to see the local practice and official guideline dates.",
+    "why.teaserMissed": "Tap to see details on this missed window.",
+    "why.teaserFoliar": "Tap to see why, how, and when foliar feeding helps.",
+    "why.teaserFarmHistory": "Tap to see your farm's own past-season average.",
+    "farmHistory.title": "Your farm's history", "farmHistory.seasons": "seasons",
+    "farmHistory.averaged": "Averaged", "farmHistory.ranged": "ranged",
+    "farmHistory.disclaimer": "This is your own farm's history, not a correction to the sourced guideline above \u2014 weather varies season to season, so treat this as context, not a new rule.",
+    "farmHistory.noSource": "Not a citation \u2014 calculated directly from your own past seasons' logged sowing and emergence dates.",
+    "foliar.title": "Foliar feeding", "foliar.whyTitle": "Why farmers use it",
+    "foliar.whyText": "A plant's leaves can absorb some nutrients directly, which foliar feeding uses to correct a deficiency quickly or support growth when root uptake is limited. It works best for micronutrients like zinc or boron, needed only in small amounts. The major nutrients \u2014 nitrogen, phosphorus, potassium \u2014 are needed in far larger quantities than a foliar spray can realistically supply, so foliar feeding supplements soil fertilizer rather than replacing it.",
+    "foliar.howTitle": "General application practice",
+    "foliar.howText": "Mix to the rate printed on the product's own label \u2014 concentration that's too strong risks scorching the leaves. Spray early morning or late afternoon, never in the heat of the day, and aim for even, light coverage of the leaf surface rather than a heavy drench.",
+    "foliar.whenTitle": "When it's typically considered",
+    "foliar.whenText": "Worth considering when a deficiency shows up as yellowing or weak growth, in the first few weeks after transplanting while roots are still establishing, or as a preventive step for micronutrients \u2014 deficiencies can affect a crop before they're visibly obvious, which is part of why they're sometimes applied ahead of symptoms rather than only after.",
+    "foliar.disclaimer": "This is general background, not a substitute for the specific product's own label \u2014 concentration and spray interval vary by brand.",
     "why.guideline": "Guideline", "why.forNextTime": "For next time",
     "why.nothingToCheck": "Nothing to check at this stage",
     "why.nothingToCheckTail": "right now. This screen will show something once you're at a stage boundary the engine tracks.",
@@ -567,6 +590,28 @@ const translations = {
     "why.noActiveSeason": "Hakuna msimu unaoendelea bado. Weka tarehe ya kupanda ili kuanza.",
     "why.routineActions": "Kazi za kawaida", "why.noRoutineActions": "Bado hakuna kazi za kawaida zilizowekwa.",
     "why.guardrailNotes": "Maonyo ya wakati", "why.lastDone": "Ilifanyika mara ya mwisho",
+    "why.teaserEngine": "Gusa kuona kile muongozo unachotarajia dhidi ya ulivyoandika.",
+    "why.teaserOneTime": "Gusa kuona kilichosababisha hili na la kufanya.",
+    "why.teaserThreat": "Gusa kuona uchunguzi kamili na la kufanya.",
+    "why.teaserRoutine": "Gusa kuona muongozo wenye chanzo kwa hili.",
+    "why.teaserGuardrail": "Gusa kuona kilichotokea na jinsi ya kukiepuka mara nyingine.",
+    "why.teaserPaceWindow": "Gusa kuona kwa nini uko kwenye kipindi cha kuwa tayari.",
+    "why.teaserPaceRate": "Gusa kuona kiwango chako cha ukuaji dhidi ya kiwango cha kawaida.",
+    "why.teaserFertWindow": "Gusa kuona tarehe za desturi ya hapa na muongozo rasmi.",
+    "why.teaserMissed": "Gusa kuona maelezo ya dirisha hili lililokosekana.",
+    "why.teaserFoliar": "Gusa kuona kwa nini, jinsi gani, na lini kulisha kupitia majani kunasaidia.",
+    "why.teaserFarmHistory": "Gusa kuona wastani wa misimu iliyopita ya shamba lako.",
+    "farmHistory.title": "Historia ya shamba lako", "farmHistory.seasons": "misimu",
+    "farmHistory.averaged": "Wastani wa", "farmHistory.ranged": "kati ya",
+    "farmHistory.disclaimer": "Hii ni historia ya shamba lako mwenyewe, si marekebisho ya muongozo wenye chanzo hapo juu \u2014 hali ya hewa hubadilika kila msimu, hivyo chukulia hii kama maelezo, si kanuni mpya.",
+    "farmHistory.noSource": "Si chanzo cha nje \u2014 imehesabiwa moja kwa moja kutoka tarehe za kupanda mbegu na kuota za misimu yako iliyopita.",
+    "foliar.title": "Kulisha kupitia majani", "foliar.whyTitle": "Kwa nini wakulima wanatumia",
+    "foliar.whyText": "Majani ya mmea yanaweza kunyonya baadhi ya virutubisho moja kwa moja, na hii ndiyo njia inayotumika kurekebisha upungufu haraka au kusaidia ukuaji wakati mizizi haifanyi kazi vizuri. Inafanya kazi vizuri zaidi kwa virutubisho vidogo kama zinki au boroni, vinavyohitajika kwa kiasi kidogo tu. Virutubisho vikubwa \u2014 naitrojeni, fosforasi, potasiamu \u2014 vinahitajika kwa kiasi kikubwa zaidi kuliko dawa ya majani inavyoweza kutoa, hivyo kulisha kupitia majani kunaongeza mbolea ya udongoni, si kuibadilisha.",
+    "foliar.howTitle": "Utaratibu wa jumla wa kutumia",
+    "foliar.howText": "Changanya kwa kiwango kilichoandikwa kwenye lebo ya bidhaa husika \u2014 mkusanyiko mkali sana unaweza kuunguza majani. Nyunyizia asubuhi na mapema au jioni, si wakati wa jua kali, na hakikisha unafunika majani sawasawa bila kulowanisha kupita kiasi.",
+    "foliar.whenTitle": "Ni lini kwa kawaida inazingatiwa",
+    "foliar.whenText": "Inafaa kuzingatiwa wakati upungufu unaonekana kama njano au ukuaji dhaifu, katika wiki za kwanza baada ya kuhamisha miche wakati mizizi bado inajijenga, au kama hatua ya kuzuia kwa virutubisho vidogo \u2014 upungufu unaweza kuathiri mmea kabla haujaonekana wazi, ndiyo maana wakati mwingine hutumika kabla ya dalili kuonekana.",
+    "foliar.disclaimer": "Haya ni maelezo ya jumla, si mbadala wa lebo ya bidhaa husika \u2014 mkusanyiko na muda wa kunyunyizia hutofautiana kwa chapa.",
     "why.guideline": "Muongozo", "why.forNextTime": "Kwa mara ijayo",
     "why.nothingToCheck": "Hakuna cha kuangalia katika hatua hii",
     "why.nothingToCheckTail": "kwa sasa. Ukurasa huu utaonyesha kitu mara utakapofika hatua muhimu inayofuatiliwa.",
@@ -741,7 +786,7 @@ function priorityCatsForPhase(heroPhase){
 }
 const TOP_N = 4;
 
-const SPRAY_TYPES = ["Insecticide", "Fungicide", "Herbicide", "Other"];
+const SPRAY_TYPES = ["Insecticide", "Fungicide", "Herbicide", "Foliar / liquid fertilizer", "Other"];
 // Structured product list — was a free-text field before, which meant safety checks could
 // never reliably detect a risky product without guessing at spelling/wording. These are the
 // specific products the fertilizer-safety chemistry rules below actually distinguish between.
@@ -1259,8 +1304,38 @@ const SOURCE_LINKS = {
   NG1: { name: "Onion Production and Management under Irrigation (Nigeria agricultural extension)", url: "https://naerls.gov.ng/wp-content/uploads/2022/11/Onion-Productiona-and-Management-under-Irrigation.pdf" },
   MCN1: { name: "Diammonium Phosphate (DAP), ammonia release near germinating seeds (Mosaic Crop Nutrition)", url: "https://www.cropnutrition.com/resource-library/diammonium-phosphate/" },
   FCN1: { name: "Maximum Safe Rates of Fertilizers, relative seedling toxicity of DAP/urea/MAP (Field Crop News)", url: "https://fieldcropnews.com/2025/05/maximum-safe-rates-of-fertilizers/" },
-  PU1: { name: "Fertilizer Compatibility, calcium and phosphate lock-up (Purdue University Vegetable Crops Hotline)", url: "https://vegcropshotline.org/article/fertilizer-compatibility/" }
+  PU1: { name: "Fertilizer Compatibility, calcium and phosphate lock-up (Purdue University Vegetable Crops Hotline)", url: "https://vegcropshotline.org/article/fertilizer-compatibility/" },
+  YK1: { name: "Foliar Fertilizers (Yara Kenya, East Africa Regional Agronomist)", url: "https://www.yara.co.ke/crop-nutrition/agronomy-advice/foliar-fertilizers/" }
 };
+
+// Swahili names for the same sources — descriptive parts translated, organization/institution
+// names and acronyms (JICA, KALRO, FiBL, university names, publication names) kept as-is since
+// they're proper nouns with no established Swahili equivalent and are how a farmer would need
+// to search for them anyway. The URL and underlying source are identical either way.
+const SOURCE_LINKS_SW = {
+  G1: "Mwongozo wa Uzalishaji wa Vitunguu (Wizara ya Kilimo Kenya / JICA)",
+  G3: "Utah State University Extension, vitunguu bustanini",
+  G7: "Uzalishaji wa Vitunguu wa Kiasili, mwongozo kwa Afrika (FiBL)",
+  G8: "Uzalishaji wa Vitunguu, mwongozo wa vitendo kwa wakulima wadogo Ethiopia (Bahir Dar University)",
+  G9: "Utah State University Extension, udhibiti wa thrips kwenye vitunguu",
+  KE1: "KALRO, mbinu za uzalishaji wa vitunguu Kenya",
+  TZ2: "Sokoine University of Agriculture, utafiti wa wadudu na aina za vitunguu (Kilosa na Kilolo, Tanzania)",
+  UG2: "Utafiti wa mbinu za kudhibiti ugonjwa wa purple blotch kwenye vitunguu (Uganda)",
+  KE2: "FarmKenya Initiative, kuotesha mbegu za vitunguu kitaluni (Kenya)",
+  UG3: "Jinsi ya kufikia asilimia 100 ya kuota kwa mbegu za vitunguu (Monitor, Uganda)",
+  MIA1: "Hatua za Kuandaa Kitalu cha Vitunguu (Money in Agribusiness, Afrika Mashariki)",
+  DLP1: "Kuandaa tuta la kitalu, muongozo wa urefu wa kivuli (Don't Lose The Plot)",
+  WAC1: "Shade Cools, usimamizi wa kivuli kitaluni (World Agroforestry Centre)",
+  NG1: "Uzalishaji na Usimamizi wa Vitunguu kwa Umwagiliaji (Huduma ya Ugani ya Kilimo Nigeria)",
+  MCN1: "Diammonium Phosphate (DAP), utoaji wa amonia karibu na mbegu zinazoota (Mosaic Crop Nutrition)",
+  FCN1: "Kiwango cha Juu Salama cha Mbolea, sumu ya DAP/urea/MAP kwa miche (Field Crop News)",
+  PU1: "Uoanifu wa Mbolea, mfungamano wa calcium na phosphate (Purdue University Vegetable Crops Hotline)",
+  YK1: "Mbolea za Majani (Yara Kenya, Mtaalamu wa Kilimo Afrika Mashariki)"
+};
+function sourceLinkName(key, s){
+  if(currentLang === "sw" && SOURCE_LINKS_SW[key]) return SOURCE_LINKS_SW[key];
+  return s.name;
+}
 
 const BASELINE_CHECKS = {
   readyToTransplant: {
@@ -1933,6 +2008,57 @@ function evaluateFertilizerWindows(heroPhase, transplantEvent, events, seasonAnc
   return { current: current, missed: missed };
 }
 
+// ---- Foliar feeding (educational, triggered by a real logged event) ----
+// General "why/how/when" content only — deliberately no invented dosage or day-schedule
+// numbers, since foliar product concentration and timing vary by brand and the sources
+// themselves say to follow the specific product's label. Shown whenever the most recent
+// logged spray event in-season is a foliar/liquid fertilizer application, any phase — the
+// general guidance applies whether it was used in the nursery or after transplanting.
+function findLatestFoliarSprayEvent(events, seasonAnchorDate){
+  const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
+  const foliarEvents = events.filter(function(ev){
+    return ev.categoryId === "spray" && ev.sprayType === "Foliar / liquid fertilizer" && inSeason(ev);
+  }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+  return foliarEvents.length ? foliarEvents[foliarEvents.length - 1] : null;
+}
+
+// ---- Farm history (this farm's own past seasons — never a source citation) ----
+// Deliberately separate from every sourced fact elsewhere in this app: this is pure arithmetic
+// over the farmer's own past seasons' logged data, always shown alongside — never blended into
+// or presented as correcting — the real published guideline. A season boundary is defined by
+// consecutive sowing events; the most recent sowing event is "this season" and is excluded from
+// the historical average, since it's what gets compared against, not folded into, the history.
+// Needs at least 2 past seasons with a real sowing->emergence pair logged before showing
+// anything — a single past season can't produce a meaningful range, and this app never deletes
+// old events, so all of it is already sitting in the log once enough seasons have been logged.
+function evaluateFarmEmergenceHistory(events){
+  const sowingEvents = events.filter(function(ev){ return ev.categoryId === "sowing"; })
+    .sort(function(a,b){ return a.date.localeCompare(b.date); });
+  const emergenceEvents = events.filter(function(ev){ return ev.categoryId === "emergence"; })
+    .sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+  if(sowingEvents.length < 2) return null;
+
+  const pastSowings = sowingEvents.slice(0, -1);
+  const daysToEmergenceList = [];
+
+  pastSowings.forEach(function(sowEv, idx){
+    const seasonEnd = sowingEvents[idx + 1].date;
+    const match = emergenceEvents.find(function(em){ return em.date >= sowEv.date && em.date < seasonEnd; });
+    if(match) daysToEmergenceList.push(daysBetween(sowEv.date, match.date));
+  });
+
+  if(daysToEmergenceList.length < 2) return null;
+
+  const avg = daysToEmergenceList.reduce(function(a,b){ return a + b; }, 0) / daysToEmergenceList.length;
+  return {
+    seasonCount: daysToEmergenceList.length,
+    avgDays: Math.round(avg),
+    minDays: Math.min.apply(null, daysToEmergenceList),
+    maxDays: Math.max.apply(null, daysToEmergenceList)
+  };
+}
+
 // ---- Fertilizer Safety ----
 // Crop-agnostic on purpose: this is basic fertilizer chemistry (ammonia toxicity to
 // germinating seeds/young roots, and calcium-phosphate lock-up when incompatible products are
@@ -2480,10 +2606,10 @@ function ActivityRow(props){
 
 function WhySourceLinks(props){
   const keys = props.sourceKeys || [];
-  const links = keys.map(function(k){ return SOURCE_LINKS[k]; }).filter(Boolean);
+  const links = keys.map(function(k){ return SOURCE_LINKS[k] ? { key:k, entry: SOURCE_LINKS[k] } : null; }).filter(Boolean);
   if(links.length === 0) return null;
-  return e("div", { className:"why-source-links" }, links.map(function(s, i){
-    return e("a", { key:i, className:"why-source-link", href:s.url, target:"_blank", rel:"noopener noreferrer", onClick: function(ev){ ev.stopPropagation(); } }, s.name + " \u2197");
+  return e("div", { className:"why-source-links" }, links.map(function(item, i){
+    return e("a", { key:i, className:"why-source-link", href:item.entry.url, target:"_blank", rel:"noopener noreferrer", onClick: function(ev){ ev.stopPropagation(); } }, sourceLinkName(item.key, item.entry) + " \u2197");
   }));
 }
 
@@ -2494,8 +2620,17 @@ function WhySourceLinks(props){
 // request. Content passed as children only renders while open, so it never affects collapsed
 // height. A tap inside the open content (e.g. a source link) stops propagation so it doesn't
 // also collapse the card back up.
+// Lets a Home tap force the matching card open on the Why screen, without threading a prop
+// through every intermediate wrapper component (WhyAdvisoryCard, WhyPaceCard, etc.) — those
+// just render normally and never need to know about focus at all.
+const WhyFocusContext = React.createContext(null);
+
 function WhyCard(props){
   const [open, setOpen] = useState(false);
+  const focusCtx = useContext(WhyFocusContext);
+  useEffect(function(){
+    if(focusCtx && focusCtx.domId === props.id) setOpen(true);
+  }, [focusCtx && focusCtx.token, focusCtx && focusCtx.domId, props.id]);
   const toggle = function(){ setOpen(!open); };
   return e("div", {
       className: "why-block" + (props.extraClass ? " " + props.extraClass : ""),
@@ -2504,9 +2639,11 @@ function WhyCard(props){
     e("div", { className:"why-card-head" },
       e("div", { style:{ textAlign:"left", minWidth:0, flex:1 } },
         e("div", { className:"why-title" }, props.title),
-        props.badgeText
-          ? e("div", { className:"why-status-row" }, e("span", { className:"why-status-badge " + props.badgeClass }, props.badgeText))
-          : (props.summaryLine ? e("div", { className:"hint", style:{ marginTop:"4px" } }, props.summaryLine) : null)
+        props.badgeText &&
+          e("div", { className:"why-status-row" }, e("span", { className:"why-status-badge " + props.badgeClass }, props.badgeText)),
+        // Teaser line — shown collapsed alongside the badge (not instead of it) so a bare
+        // status badge isn't the only thing inviting a tap; gives a reason to open the card.
+        !open && props.summaryLine && e("div", { className:"hint", style:{ marginTop:"4px" } }, props.summaryLine)
       ),
       e("span", { className:"why-collapsible-chev" }, open ? "\u2212" : "+")
     ),
@@ -2520,7 +2657,7 @@ function WhyAdvisoryCard(props){
     : engineCheck.overall === "partial" ? t("why.partiallyMatches")
     : engineCheck.overall === "none" ? t("why.notYetMatching")
     : t("why.noObsLoggedShort");
-  return e(WhyCard, { id:"why-engine", title: engineCheck.label, badgeClass: engineCheck.overall, badgeText: badgeText },
+  return e(WhyCard, { id:"why-engine", title: engineCheck.label, badgeClass: engineCheck.overall, badgeText: badgeText, summaryLine: t("why.teaserEngine") },
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatGuidelineExpects")),
     e("div", { className:"why-criteria-list" }, engineCheck.results.map(function(r, i){
       return e("div", { className:"why-criterion", key:i },
@@ -2547,7 +2684,7 @@ function WhyAdvisoryCard(props){
 function WhyOneTimeActionCard(props){
   const data = props.data;
   const action = data.action;
-  return e(WhyCard, { id:"why-onetime-" + data.key, title: action.label, badgeClass:"partial", badgeText: t("why.actionNeeded") },
+  return e(WhyCard, { id:"why-onetime-" + data.key, title: action.label, badgeClass:"partial", badgeText: t("why.actionNeeded"), summaryLine: t("why.teaserOneTime") },
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatWasLogged")),
     e("div", { className:"hint" }, (props.metaText || t("why.logged")) + " " + relativeLabel(daysSince(data.triggerEvent.date)) + " (" + formatDateDisplay(data.triggerEvent.date) + ")."),
 
@@ -2577,7 +2714,7 @@ function severityBadgeClass(sev){
 function WhyThreatCard(props){
   const threat = props.threat;
   return e(WhyCard, { id:"why-threat-" + threat.id, extraClass:"threat-" + threat.severity, title: threat.label,
-      badgeClass: severityBadgeClass(threat.severity), badgeText: severityBadgeText(threat.severity) },
+      badgeClass: severityBadgeClass(threat.severity), badgeText: severityBadgeText(threat.severity), summaryLine: t("why.teaserThreat") },
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.whatWasLogged")),
     e("div", { className:"hint" }, t("why.fromObservationShort") + " " + relativeLabel(daysSince(threat.observationDate)) + " (" + formatDateDisplay(threat.observationDate) + ")."),
 
@@ -2598,7 +2735,7 @@ function WhyThreatCard(props){
 function WhyRoutineActionCard(props){
   const ev = props.ev, catId = props.catId, guidance = props.guidance;
   return e(WhyCard, { id:"why-action-" + catId, title: nextActionTitle(ev), badgeClass:"no-data",
-      badgeText: t("why.lastDone") + " " + relativeLabel(daysSince(ev.date)) },
+      badgeText: t("why.lastDone") + " " + relativeLabel(daysSince(ev.date)), summaryLine: t("why.teaserRoutine") },
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.guideline")),
     e("div", { className:"hint", style:{ marginBottom:"8px" } }, guidance.text),
     e(WhySourceLinks, { sourceKeys: guidance.sourceKeys })
@@ -2610,7 +2747,7 @@ function WhyRoutineActionCard(props){
 function WhyGuardrailCard(props){
   const g = props.guardrail;
   return e(WhyCard, { id:"why-guardrail-" + props.idx, extraClass:"guardrail-" + g.severity, title: g.label,
-      badgeClass: severityBadgeClass(g.severity), badgeText: severityBadgeText(g.severity) },
+      badgeClass: severityBadgeClass(g.severity), badgeText: severityBadgeText(g.severity), summaryLine: t("why.teaserGuardrail") },
     e("div", { className:"hint", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.logged2") + " " + formatDateDisplay(g.eventDate)),
     e("div", { className:"why-subhead", style:{ marginBottom:"6px" } }, t("why.forNextTime")),
     e("div", { className:"hint", style:{ marginBottom:"8px" } }, g.message + " " + g.avoid),
@@ -2622,9 +2759,10 @@ function WhyGuardrailCard(props){
 // exist this season. Explains the estimate honestly (interpolated, not a sourced growth curve).
 function WhyPaceCard(props){
   const p = props.pace;
+  const paceSummary = p.inTransplantWindow ? t("why.teaserPaceWindow") : t("why.teaserPaceRate");
   return e(WhyCard, { id:"why-pace", title: t("pace.title"),
       badgeClass: p.inTransplantWindow ? "full" : p.badgeClass,
-      badgeText: p.inTransplantWindow ? t("pace.inWindow") : t("pace." + p.status) },
+      badgeText: p.inTransplantWindow ? t("pace.inWindow") : t("pace." + p.status), summaryLine: paceSummary },
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("pace.whatThisMeans")),
 
     p.inTransplantWindow
@@ -2646,6 +2784,23 @@ function WhyPaceCard(props){
   );
 }
 
+// Farm history card — your own farm's past-seasons average, shown deliberately separate from
+// the sourced guideline (never blended into it, never presented as correcting it). Uses the
+// neutral "on-pace" badge like the other calm/informational cards, not a severity color, since
+// this isn't flagging anything — it's just what your own data says.
+function WhyFarmHistoryCard(props){
+  const h = props.history;
+  return e(WhyCard, { id:"why-farmhistory", title: t("farmHistory.title"),
+      badgeClass:"on-pace", badgeText: h.seasonCount + " " + t("farmHistory.seasons"), summaryLine: t("why.teaserFarmHistory") },
+    e("div", { className:"hint" },
+      t("farmHistory.averaged") + " " + h.avgDays + " " + t("ev.days") + ", " + t("farmHistory.ranged") + " " + h.minDays + "\u2013" + h.maxDays + " " + t("ev.days") + "."
+    ),
+    e("div", { className:"hint", style:{ marginTop:"10px", fontStyle:"italic" } }, t("farmHistory.disclaimer")),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    e("div", { className:"hint" }, t("farmHistory.noSource"))
+  );
+}
+
 // Fertilizer window card — shows the window as a range: opens on the locally-practiced day,
 // and — where sourced — the official guideline's latest day. Badge color escalates as the
 // window approaches, opens, and enters its final 2 days: plenty of time (green) -> open (amber)
@@ -2662,7 +2817,7 @@ function WhyFertilizerWindowCard(props){
       ? t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")
       : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days");
   const hasSource = fw.window.sourceKeys && fw.window.sourceKeys.length > 0;
-  return e(WhyCard, { id:"why-fertwindow-section", title: fw.window.label, badgeClass: badgeClass, badgeText: badgeText },
+  return e(WhyCard, { id:"why-fertwindow-section", title: fw.window.label, badgeClass: badgeClass, badgeText: badgeText, summaryLine: t("why.teaserFertWindow") },
     e("div", { className:"hint" }, daysLine + " (" + t("fertwindow.windowLabel") + " " + fw.window.startDay + "\u2013" + fw.window.endDay + ")."),
     e("div", { className:"hint", style:{ marginTop:"8px" } }, fw.window.guidance),
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
@@ -2681,13 +2836,33 @@ function WhyFertilizerWindowCard(props){
 function WhyMissedFertilizerWindowCard(props){
   const w = props.window;
   const hasSource = w.sourceKeys && w.sourceKeys.length > 0;
-  return e(WhyCard, { id:"why-fertwindow-missed-" + w.windowNumber, title: w.label, badgeClass:"none", badgeText: t("fertwindow.missed") },
+  return e(WhyCard, { id:"why-fertwindow-missed-" + w.windowNumber, title: w.label, badgeClass:"none", badgeText: t("fertwindow.missed"), summaryLine: t("why.teaserMissed") },
     e("div", { className:"hint" }, t("fertwindow.missedNote") + " (" + t("fertwindow.windowLabel") + " " + w.startDay + "\u2013" + w.endDay + ")."),
     e("div", { className:"hint", style:{ marginTop:"8px" } }, w.guidance),
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
     hasSource
       ? e(WhySourceLinks, { sourceKeys: w.sourceKeys })
       : e("div", { className:"hint" }, t("fertwindow.noSource"))
+  );
+}
+
+// Foliar feeding — general educational content, shown when the most recent logged spray event
+// in-season was a foliar/liquid fertilizer application. Deliberately no dosage or day-schedule
+// numbers (see findLatestFoliarSprayEvent comment); this is context, not an alert, so it uses
+// the calm neutral badge rather than any severity color.
+function WhyFoliarCard(props){
+  const ev = props.event;
+  return e(WhyCard, { id:"why-foliar-section", title: t("foliar.title"), badgeClass:"on-pace",
+      badgeText: t("why.logged2") + " " + relativeLabel(daysSince(ev.date)), summaryLine: t("why.teaserFoliar") },
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("foliar.whyTitle")),
+    e("div", { className:"hint" }, t("foliar.whyText")),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("foliar.howTitle")),
+    e("div", { className:"hint" }, t("foliar.howText")),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("foliar.whenTitle")),
+    e("div", { className:"hint" }, t("foliar.whenText")),
+    e("div", { className:"hint", style:{ marginTop:"10px", fontStyle:"italic" } }, t("foliar.disclaimer")),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
+    e(WhySourceLinks, { sourceKeys: ["YK1"] })
   );
 }
 
@@ -2734,26 +2909,38 @@ function WhyScreen(props){
     return seasonPhase.heroPhase === "germination" ? evaluateNurseryPace(seasonPhase.sowingEvent, state.observations) : null;
   }, [seasonPhase.heroPhase, seasonPhase.sowingEvent, state.observations]);
   const showPaceCard = nurseryPace && nurseryPace.status !== "insufficient";
+  const farmHistory = useMemo(function(){
+    return seasonPhase.heroPhase === "germination" ? evaluateFarmEmergenceHistory(state.events) : null;
+  }, [seasonPhase.heroPhase, state.events]);
   const fertWindowState = useMemo(function(){
     return evaluateFertilizerWindows(seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent]);
+  const latestFoliarEvent = useMemo(function(){
+    return findLatestFoliarSprayEvent(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
+  }, [state.events, seasonPhase.sowingEvent]);
 
-  // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
-  // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
-  useEffect(function(){
-    const focus = props.focus;
-    if(!focus || !focus.id) return;
-    const domId = focus.id === "engine" ? "why-engine"
+  // Computed once per render so both the scroll effect and the auto-expand context (below) use
+  // exactly the same target — a tapped Home card should scroll to AND open the same place.
+  const focus = props.focus;
+  const focusDomId = (focus && focus.id) ? (
+    focus.id === "engine" ? "why-engine"
       : focus.id.indexOf("onetime-") === 0 ? "why-" + focus.id
       : focus.id.indexOf("threat-") === 0 ? "why-" + focus.id
       : focus.id.indexOf("fertsafety") === 0 ? "why-guardrails-section"
       : focus.id.indexOf("fertwindow") === 0 ? "why-fertwindow-section"
-      : "why-action-" + focus.id;
-    const el = document.getElementById(domId);
-    if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
-  }, [props.focus && props.focus.token]);
+      : "why-action-" + focus.id
+  ) : null;
 
-  return e("div", { style:{ paddingBottom:"76px" } },
+  // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
+  // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
+  useEffect(function(){
+    if(!focusDomId) return;
+    const el = document.getElementById(focusDomId);
+    if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
+  }, [focus && focus.token]);
+
+  return e(WhyFocusContext.Provider, { value: { domId: focusDomId, token: focus && focus.token } },
+  e("div", { style:{ paddingBottom:"76px" } },
     e("div", { className:"header" }, e("div", { className:"farmname" }, t("why.title"))),
 
     threats.length > 0 && e(React.Fragment, null,
@@ -2771,18 +2958,22 @@ function WhyScreen(props){
             : e("div", { style:{ margin:"0 20px 12px" } }, e(WhyAdvisoryCard, { engineCheck: engineCheck })),
           showPaceCard &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyPaceCard, { pace: nurseryPace })),
+          farmHistory &&
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyFarmHistoryCard, { history: farmHistory })),
           fertWindowState.current &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyFertilizerWindowCard, { fertWindow: fertWindowState.current })),
           fertWindowState.missed.map(function(w){
             return e("div", { key:"fertwindow-missed-" + w.windowNumber, style:{ margin:"0 20px 12px" } }, e(WhyMissedFertilizerWindowCard, { window: w }));
           }),
+          latestFoliarEvent &&
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyFoliarCard, { event: latestFoliarEvent })),
           nurseryMulchAction && nurseryMulchAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: nurseryMulchAction, metaText:t("why.seedlingsEmerged") })),
           erectShadeAction && erectShadeAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyOneTimeActionCard, { data: erectShadeAction, metaText:t("why.sunScorchLogged") })),
           removeShadeAction && removeShadeAction.status === "due" &&
             e("div", { style:{ margin:"0 20px 20px" } }, e(WhyOneTimeActionCard, { data: removeShadeAction, metaText:t("why.shadeErectedMeta") })),
-          !engineCheck && !showPaceCard && !fertWindowState.current && fertWindowState.missed.length === 0 && !(nurseryMulchAction && nurseryMulchAction.status === "due")
+          !engineCheck && !showPaceCard && !farmHistory && !fertWindowState.current && fertWindowState.missed.length === 0 && !latestFoliarEvent && !(nurseryMulchAction && nurseryMulchAction.status === "due")
             && !(erectShadeAction && erectShadeAction.status === "due") && !(removeShadeAction && removeShadeAction.status === "due") &&
             e("div", { className:"empty-state", style:{ margin:"0 20px 20px" } },
               e("div", null, t("why.nothingToCheck") + " (" + stageLabelDisplay(seasonPhase.heroStageLabel) + ") " + t("why.nothingToCheckTail")))
@@ -2803,7 +2994,7 @@ function WhyScreen(props){
         return e("div", { style:{ marginBottom:"12px" }, key: g.id + i }, e(WhyGuardrailCard, { guardrail: g, idx: i }));
       }))
     )
-  );
+  ));
 }
 
 
