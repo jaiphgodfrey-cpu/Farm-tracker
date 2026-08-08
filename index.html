@@ -2945,10 +2945,18 @@ function WhyScreen(props){
 
   // Scrolls to whichever card was tapped from Home, whether that's the engine advisory, a
   // one-time action, a threat, or a specific routine action. Re-runs on every new tap.
+  // Delayed by one tick: the matching card's own auto-expand effect (in WhyCard, via
+  // WhyFocusContext) fires from this same tap and makes the card taller, but that's a separate
+  // state update that lands on a later render than this effect's. Scrolling immediately would
+  // measure the card's still-collapsed height and stop short once it then expands underneath
+  // the viewport. A short setTimeout lets that expand's layout settle first.
   useEffect(function(){
     if(!focusDomId) return;
-    const el = document.getElementById(focusDomId);
-    if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
+    const timer = setTimeout(function(){
+      const el = document.getElementById(focusDomId);
+      if(el) el.scrollIntoView({ behavior:"smooth", block:"start" });
+    }, 80);
+    return function(){ clearTimeout(timer); };
   }, [focus && focus.token]);
 
   return e(WhyFocusContext.Provider, { value: { domId: focusDomId, token: focus && focus.token } },
