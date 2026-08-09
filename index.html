@@ -439,6 +439,13 @@ const translations = {
     "finance.resourceType.equipment": "Equipment", "finance.resourceType.other": "Other",
     "finance.item": "Item", "finance.itemName": "Item name", "finance.itemNamePlaceholder": "e.g. Sprayer pump",
     "finance.unit": "Unit", "finance.quantity": "Quantity", "finance.enterItemName": "Enter an item name.",
+    "finance.stockCheck": "Stock check", "finance.inStock": "In stock", "finance.notTracked": "Not tracked",
+    "finance.stockNotTrackedHint": "You haven't logged a purchase or opening stock for this fertilizer yet, so the app can't tell how much you already have.",
+    "finance.stockSufficient": "Stock is sufficient", "finance.shortfall": "Shortfall",
+    "finance.logPurchaseHint": "Log a purchase from Settings \u2192 Actions to update this.",
+    "finance.stockNotTrackedShort": "Stock not tracked for this fertilizer yet.",
+    "finance.recordedStock": "Recorded stock", "finance.thisIsMoreThanRecorded": "This is",
+    "finance.moreThanRecorded": "kg more than recorded.",
     "finance.reason.used": "Used",
     "finance.reason": "Reason", "finance.reason.opening_stock": "Opening stock (what I already have)",
     "finance.reason.spillage": "Spillage", "finance.reason.given_away": "Given away", "finance.reason.other": "Other",
@@ -645,6 +652,13 @@ const translations = {
     "finance.resourceType.equipment": "Vifaa", "finance.resourceType.other": "Nyingine",
     "finance.item": "Kitu", "finance.itemName": "Jina la kitu", "finance.itemNamePlaceholder": "mfano: Pampu ya kunyunyizia",
     "finance.unit": "Kipimo", "finance.quantity": "Kiasi", "finance.enterItemName": "Weka jina la kitu.",
+    "finance.stockCheck": "Ukaguzi wa akiba", "finance.inStock": "Iliyopo kwenye akiba", "finance.notTracked": "Haijafuatiliwa",
+    "finance.stockNotTrackedHint": "Bado hujaweka manunuzi au akiba ya awali ya mbolea hii, hivyo programu haiwezi kujua kiasi ulichonacho tayari.",
+    "finance.stockSufficient": "Akiba inatosha", "finance.shortfall": "Upungufu",
+    "finance.logPurchaseHint": "Weka manunuzi kutoka Mipangilio \u2192 Vitendo ili kusasisha hii.",
+    "finance.stockNotTrackedShort": "Akiba ya mbolea hii bado haijafuatiliwa.",
+    "finance.recordedStock": "Akiba iliyoandikwa", "finance.thisIsMoreThanRecorded": "Hii ni",
+    "finance.moreThanRecorded": "kg zaidi ya ilivyoandikwa.",
     "finance.reason.used": "Kimetumika",
     "finance.reason": "Sababu", "finance.reason.opening_stock": "Akiba ya awali (niliyokuwa nayo tayari)",
     "finance.reason.spillage": "Ilimwagika", "finance.reason.given_away": "Nilimpa mtu", "finance.reason.other": "Nyingine",
@@ -1005,6 +1019,24 @@ function seedData(){
   };
 }
 
+// Migrates a purchase/adjustment record logged before the resourceType widening (when these
+// only had fertilizerType + quantityKg) into the current shape. Applied everywhere state can
+// enter the app — localStorage, backup restore, and both shared-farm sync pull paths — so no
+// code path can ever see a record missing itemLabel/resourceType again. A record missing this
+// crashed FinanceScreen's stock sort outright (itemLabel.localeCompare on undefined), which is
+// exactly what happened to real logged data here — a genuine gap, not a hypothetical one.
+function normalizeResourceRecord(r){
+  if(!r || r.resourceType) return r;
+  return Object.assign({}, r, {
+    resourceType: "fertilizer",
+    itemKey: r.fertilizerType || r.itemKey,
+    itemLabel: r.fertilizerType || r.itemLabel,
+    unit: r.unit || "kg",
+    quantity: r.quantityKg != null ? r.quantityKg : r.quantity
+  });
+}
+function normalizeResourceList(list){ return (list || []).map(normalizeResourceRecord); }
+
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -1013,8 +1045,8 @@ function loadState(){
     if(!parsed || !parsed.farm || !parsed.events) return seedData();
     if(!parsed.observations) parsed.observations = []; // migrate saves from before Observations existed
     if(!parsed.areaBeds) parsed.areaBeds = []; // migrate saves from before the Area Calculator existed
-    if(!parsed.purchases) parsed.purchases = []; // migrate saves from before Supplies/inventory existed
-    if(!parsed.stockAdjustments) parsed.stockAdjustments = []; // same
+    parsed.purchases = normalizeResourceList(parsed.purchases); // migrate saves from before Supplies/inventory existed, or from before the resourceType widening
+    parsed.stockAdjustments = normalizeResourceList(parsed.stockAdjustments); // same
     return parsed;
   }catch(err){ return seedData(); }
 }
@@ -1992,6 +2024,7 @@ const FERTILIZER_WINDOWS = [
     endDay: 10,
     endIsSourced: false,
     label: "NPK (basal top-dress)",
+    fertilizerType: "NPK compound",
     guidance: "Local practice here is to apply the first NPK application within about 10 days of transplanting — the official published guide only says \u201cat transplanting\u201d, without giving a window, so this timing is local practice rather than a cited guideline.",
     sourceKeys: []
   },
@@ -2001,6 +2034,7 @@ const FERTILIZER_WINDOWS = [
     endDay: 30,
     endIsSourced: true,
     label: "CAN application 1",
+    fertilizerType: "CAN",
     guidance: "Local practice here is to apply from day 21 (start of the 3rd week) after transplanting. The official guide (KALRO/JICA) gives day 30 as the guideline timing for this first top-dress.",
     sourceKeys: ["G1", "KE1", "G7"]
   },
@@ -2010,6 +2044,7 @@ const FERTILIZER_WINDOWS = [
     endDay: 45,
     endIsSourced: true,
     label: "CAN application 2",
+    fertilizerType: "CAN",
     guidance: "Local practice here is to apply from day 35 (start of the 5th week) after transplanting. The official guide (KALRO/JICA) gives day 45 as the guideline timing for this second top-dress. Guidance is to stop fertilizing entirely at least 4 weeks before harvest after this.",
     sourceKeys: ["G1", "KE1", "G7"]
   }
@@ -2423,6 +2458,9 @@ function HomeScreen(state){
   const fertWindowState = useMemo(function(){
     return evaluateFertilizerWindows(heroPhase, transplantEvent, state.events, sowingEvent ? sowingEvent.date : null);
   }, [heroPhase, transplantEvent, state.events, sowingEvent]);
+  // Only computed for the "can I execute this" stock-aware fertilizer window card below —
+  // deliberately not surfaced as its own separate Home card (would just duplicate this one).
+  const homeInventory = useMemo(function(){ return computeInventory(state); }, [state.purchases, state.stockAdjustments, state.events]);
 
   // Threat Map cards auto-hide from Home after 24h or a new event/observation, whichever first.
   const totalEntries = state.events.length + (state.observations ? state.observations.length : 0);
@@ -3472,6 +3510,16 @@ function FertilizerCalculatorModal(props){
   const totalKg = mode === "area" ? areaTotalKg : plantTotalKg;
   const totalKgWithBuffer = totalKg != null ? totalKg * (1 + bufferNum / 100) : null;
 
+  // Stock check — deliberately never treats "not tracked" as zero. `known` distinguishes a
+  // genuine zero (farmer told the app they have none) from having never told the app anything
+  // about this fertilizer type at all; see computeInventory's own comment for why that matters.
+  const inventory = useMemo(function(){ return computeInventory(props.state); }, [props.state]);
+  const stockEntry = inventory["fertilizer::" + fertilizerType];
+  const stockKnown = stockEntry && stockEntry.known;
+  const stockQty = stockKnown ? stockEntry.quantity : null;
+  const shortfallKg = (stockKnown && totalKgWithBuffer != null) ? Math.max(0, totalKgWithBuffer - stockQty) : null;
+  const stockSufficient = stockKnown && totalKgWithBuffer != null && stockQty >= totalKgWithBuffer;
+
   return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
     e("div", { className:"modal" },
       e("h2", null, t("calc.fert")),
@@ -3534,6 +3582,23 @@ function FertilizerCalculatorModal(props){
       e("div", { className:"calc-result" },
         e("div", { className:"calc-result-row" }, e("span", null, t("calc.baseNeed")), e("span", null, totalKg != null ? totalKg.toFixed(2) + " kg" : "—")),
         e("div", { className:"calc-result-row total" }, e("span", null, t("calc.buyThisMuch")), e("span", null, totalKgWithBuffer != null ? totalKgWithBuffer.toFixed(2) + " kg" : "—"))
+      ),
+
+      totalKgWithBuffer != null && e("div", { className:"calc-result", style:{ marginTop:"10px" } },
+        e("div", { className:"modal-field-group-label", style:{ marginBottom:"8px" } }, t("finance.stockCheck")),
+        !stockKnown
+          ? e(React.Fragment, null,
+              e("div", { className:"calc-result-row" }, e("span", null, t("finance.inStock")), e("span", { style:{ color:"var(--text-muted)" } }, t("finance.notTracked"))),
+              e("div", { className:"hint", style:{ marginTop:"6px" } }, t("finance.stockNotTrackedHint")))
+          : e(React.Fragment, null,
+              e("div", { className:"calc-result-row" }, e("span", null, t("finance.inStock")), e("span", null, stockQty.toFixed(1) + " kg")),
+              stockSufficient
+                ? e("div", { className:"calc-result-row", style:{ color:"var(--accent)", fontWeight:700 } }, e("span", null, "\u2713 " + t("finance.stockSufficient")), e("span", null))
+                : e(React.Fragment, null,
+                    e("div", { className:"calc-result-row total" }, e("span", null, t("finance.shortfall")), e("span", { style:{ color:"var(--status-warning)" } }, shortfallKg.toFixed(2) + " kg")),
+                    e("div", { className:"hint", style:{ marginTop:"6px" } }, t("finance.logPurchaseHint"))
+                  )
+            )
       ),
 
       e("div", { className:"modal-actions" },
@@ -3979,8 +4044,8 @@ function SettingsScreen(props){
       events: parsed.events,
       observations: Array.isArray(parsed.observations) ? parsed.observations : [],
       areaBeds: Array.isArray(parsed.areaBeds) ? parsed.areaBeds : [],
-      purchases: Array.isArray(parsed.purchases) ? parsed.purchases : [],
-      stockAdjustments: Array.isArray(parsed.stockAdjustments) ? parsed.stockAdjustments : []
+      purchases: normalizeResourceList(Array.isArray(parsed.purchases) ? parsed.purchases : []),
+      stockAdjustments: normalizeResourceList(Array.isArray(parsed.stockAdjustments) ? parsed.stockAdjustments : [])
     });
     setRestoreOpen(false);
   }
@@ -4198,6 +4263,7 @@ function SettingsScreen(props){
     fertCalcOpen && e(FertilizerCalculatorModal, {
       bedsCount: areaBeds.length,
       totalArea: totalBedArea,
+      state: state,
       onClose: function(){ setFertCalcOpen(false); }
     })
   );
@@ -4234,7 +4300,7 @@ function App(){
         if(prevMeta.farmCode !== code) return prevMeta; // a stale callback from a farm we've since left
         if(remote.updatedAt && remote.updatedAt > prevMeta.updatedAt){
           skipNextSyncPush.current = true;
-          setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [], purchases: remote.purchases || [], stockAdjustments: remote.stockAdjustments || [] });
+          setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [], purchases: normalizeResourceList(remote.purchases), stockAdjustments: normalizeResourceList(remote.stockAdjustments) });
           const nextMeta = { farmCode: code, updatedAt: remote.updatedAt, needsSync:false };
           saveSyncMeta(nextMeta);
           return nextMeta;
@@ -4301,7 +4367,7 @@ function App(){
     return fbFetchState(code).then(function(remote){
       if(!remote) return { ok:false, reason:"not-found" };
       skipNextSyncPush.current = true;
-      setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [], purchases: remote.purchases || [], stockAdjustments: remote.stockAdjustments || [] });
+      setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [], purchases: normalizeResourceList(remote.purchases), stockAdjustments: normalizeResourceList(remote.stockAdjustments) });
       const meta = { farmCode: code, updatedAt: remote.updatedAt || Date.now(), needsSync:false };
       saveSyncMeta(meta); setSyncMeta(meta);
       return { ok:true };
@@ -4334,7 +4400,7 @@ function App(){
   function addStockAdjustment(a){ setState(function(prev){ return Object.assign({}, prev, { stockAdjustments: (prev.stockAdjustments||[]).concat([a]) }); }); }
   function deleteStockAdjustment(id){ setState(function(prev){ return Object.assign({}, prev, { stockAdjustments: (prev.stockAdjustments||[]).filter(function(a){ return a.id !== id; }) }); }); }
 
-  function restoreState(newState){ setState({ farm: newState.farm, events: newState.events, observations: newState.observations || [], areaBeds: newState.areaBeds || [], purchases: newState.purchases || [], stockAdjustments: newState.stockAdjustments || [] }); }
+  function restoreState(newState){ setState({ farm: newState.farm, events: newState.events, observations: newState.observations || [], areaBeds: newState.areaBeds || [], purchases: normalizeResourceList(newState.purchases), stockAdjustments: normalizeResourceList(newState.stockAdjustments) }); }
 
   // Purchase / stock-adjustment add modals — shared by Settings ("+ Log a purchase" / "+ Set
   // stock / adjustment"), same pattern as the Event modal below. Adding a record always happens
@@ -4353,6 +4419,11 @@ function App(){
   const [formSprayType, setFormSprayType] = useState(SPRAY_TYPES[0]);
   const [formFertilizerType, setFormFertilizerType] = useState(FERTILIZER_TYPES[0]);
   const [formQuantityKg, setFormQuantityKg] = useState("");
+  // Stock banner for the fertilizer event form — warns on insufficient/unknown stock, never
+  // blocks saving. The app doesn't know if the farmer forgot to log a purchase, had fertilizer
+  // from before, or the record is just wrong — so it flags the discrepancy and lets them save
+  // what actually happened either way.
+  const eventFormInventory = useMemo(function(){ return computeInventory(state); }, [state.purchases, state.stockAdjustments, state.events]);
   const [formObservation, setFormObservation] = useState("");
   const [formLabel, setFormLabel] = useState("");
   const [formOutcome, setFormOutcome] = useState(DISPOSITION_OPTIONS[0]);
@@ -4507,6 +4578,18 @@ function App(){
                 e("input", { type:"number", min:"0", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
               )
             ),
+
+            formCategory === "fertilizer" && (function(){
+              const entry = eventFormInventory["fertilizer::" + formFertilizerType];
+              if(!entry || !entry.known){
+                return e("div", { className:"hint" }, t("finance.stockNotTrackedShort"));
+              }
+              const q = Number(formQuantityKg);
+              const exceeds = formQuantityKg.trim() && !isNaN(q) && q > 0 && q > entry.quantity;
+              return e("div", { className:"hint", style: exceeds ? { color:"var(--status-warning)" } : undefined },
+                t("finance.recordedStock") + ": " + entry.quantity.toFixed(1) + " kg." +
+                (exceeds ? " " + t("finance.thisIsMoreThanRecorded") + " " + (q - entry.quantity).toFixed(1) + " " + t("finance.moreThanRecorded") : ""));
+            })(),
 
             formCategory === "stored_sold" && e("div", { className:"field-row" },
               e("div", { className:"field" }, e("label", null, t("field.outcome")),
