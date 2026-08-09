@@ -101,6 +101,11 @@
     color:var(--text-muted); padding:0 20px; margin:22px 0 10px;
     display:flex; align-items:center; justify-content:space-between;
   }
+  .settings-group-header{
+    font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
+    color:var(--accent); padding:0 20px; margin:26px 0 8px;
+  }
+  .settings-group-header:first-of-type{ margin-top:16px; }
 
   .card-list{padding:0 16px; display:flex; flex-direction:column; gap:10px;}
   .event-card{
@@ -203,6 +208,29 @@
   .data-row:last-child{border-bottom:none;}
   .data-row .chev{color:var(--text-muted); font-size:18px;}
 
+  .card-new{ margin:0 20px 24px; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:16px; padding:0 14px; }
+  .data-row.icon-row{ justify-content:flex-start; gap:12px; }
+  .data-row.icon-row .chev{ margin-left:auto; }
+  .row-icon{
+    width:32px; height:32px; border-radius:9px; flex-shrink:0;
+    background:var(--bg-elevated); color:var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .row-icon.accent{ background:var(--accent-dim); color:var(--accent); }
+  .row-content-new{ flex:1; min-width:0; }
+  .row-value-new{ font-size:11.5px; color:var(--text-secondary); margin-top:2px; font-weight:500; }
+
+  .farm-card{ position:relative; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:18px; padding:16px 16px 14px; margin:0 20px 24px; overflow:hidden; }
+  .farm-card::before{ content:""; position:absolute; top:0; left:0; right:0; height:4px; background:var(--accent); opacity:0.55; }
+  .farm-card-head{ display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+  .farm-avatar{ width:48px; height:48px; border-radius:50%; background:var(--accent-dim); border:2px solid rgba(79,174,104,0.35); display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:700; color:var(--accent); flex-shrink:0; }
+  .farm-title-row{ flex:1; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .farm-name{ font-size:18px; font-weight:700; line-height:1.2; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .edit-btn{ width:30px; height:30px; border-radius:50%; border:none; background:var(--bg-elevated); color:var(--text-muted); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .meta-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .meta-chip{ display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:20px; font-size:11.5px; font-weight:600; background:var(--bg-elevated); color:var(--text-secondary); border:1px solid var(--border-subtle); }
+  .meta-chip.accent{ background:var(--accent-dim); color:var(--accent); border-color:rgba(79,174,104,0.3); }
+
   .obs{font-size:12.5px; color:var(--text-secondary); font-style:italic; line-height:1.4;}
 
   .add-btn{width:100%; background:var(--accent-dim); color:var(--accent); border:1px dashed var(--accent); border-radius:10px; padding:12px; font-size:14px; font-weight:700; margin-top:14px;}
@@ -221,6 +249,9 @@
   .calc-result-row.total{font-weight:800; font-size:16px; color:var(--text-primary); border-top:1px solid var(--border-subtle); margin-top:6px; padding-top:10px;}
   .field-row{display:flex; gap:10px;}
   .field-row .field{flex:1;}
+  .modal-field-group{ background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:14px; padding:14px 14px 2px; margin-bottom:14px; }
+  .modal-field-group-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent); margin-bottom:10px; }
+  .modal-field-group .field input, .modal-field-group .field select{ background:var(--bg-surface); }
 
   .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:50; display:flex; align-items:flex-end; justify-content:center;}
   .modal{background:var(--bg-surface); width:100%; max-width:480px; border-radius:20px 20px 0 0; padding:20px 20px calc(20px + env(safe-area-inset-bottom)); max-height:85vh; overflow-y:auto; border:1px solid var(--border-subtle); border-bottom:none;}
@@ -338,7 +369,7 @@ function fbPushState(farmCode, state, updatedAt){
       if(existing && existing.updatedAt && existing.updatedAt > updatedAt) return { skipped:true };
       return fb.set(path, {
         farm: state.farm, events: state.events, observations: state.observations || [],
-        areaBeds: state.areaBeds || [], updatedAt: updatedAt
+        areaBeds: state.areaBeds || [], purchases: state.purchases || [], stockAdjustments: state.stockAdjustments || [], updatedAt: updatedAt
       }).then(function(){ return { skipped:false }; });
     });
   });
@@ -384,7 +415,7 @@ function fbSubscribeConnectivity(onChange){
 let currentLang = "en";
 const translations = {
   en: {
-    "nav.home": "Home", "nav.why": "Why", "nav.history": "History", "nav.settings": "Settings",
+    "nav.home": "Home", "nav.why": "Why", "nav.history": "History", "nav.settings": "Settings", "nav.finance": "Finance",
 
     "common.cancel": "Cancel", "common.save": "Save", "common.add": "Add", "common.delete": "Delete",
     "common.edit": "Edit", "common.close": "Close", "common.done": "Done", "common.back": "Back",
@@ -399,9 +430,27 @@ const translations = {
 
     "settings.title": "Settings", "settings.farmProfile": "Farm profile", "settings.farmName": "Farm name",
     "settings.cropType": "Crop type", "settings.moreCrops": "More crops can be added here later.",
+    "settings.groupFarm": "Farm", "settings.groupActions": "Actions", "settings.groupPlanning": "Planning", "settings.groupData": "Data",
+    "finance.title": "Finance", "finance.currentStock": "Current stock",
+    "finance.noStock": "No stock tracked yet. Log a purchase or your current stock to get started.",
+    "finance.logPurchase": "+ Log a purchase", "finance.logAdjustment": "+ Set stock / adjustment",
+    "finance.brand": "Brand (optional)", "finance.supplier": "Supplier (optional)",
+    "finance.reason": "Reason", "finance.reason.opening_stock": "Opening stock (what I already have)",
+    "finance.reason.spillage": "Spillage", "finance.reason.given_away": "Given away", "finance.reason.other": "Other",
+    "finance.openingStockHint": "For fertilizer you already had before tracking stock in this app \u2014 not a purchase, just your true starting point.",
+    "finance.enterValidQty": "Enter a quantity above 0.",
+    "finance.outOfStock": "Out of stock", "finance.recentActivity": "Recent activity", "finance.noActivity": "Nothing logged yet.",
+    "finance.purchased": "Purchased", "finance.deleteEntryQ": "Delete this entry?",
+    "finance.addFromSettings": "Log a purchase or stock adjustment from Settings \u2192 Actions.",
+    "settings.farmLocation": "Location", "settings.farmOwnership": "Ownership",
+    "settings.ownershipOwned": "Owned", "settings.ownershipRental": "Rental",
+    "settings.rentPerSeason": "Rent per season, Tsh",
+    "settings.farmSize": "Farm size (acres)", "settings.farmSizeHint": "Your farm's total land size, separate from the Area Calculator's planted-bed measurements.",
+    "settings.farmSeason": "Season", "settings.seasonRain": "Rain season", "settings.seasonDry": "Dry season",
     "settings.logNewEvent": "Log a new event", "settings.addNewEvent": "+ Add new event",
     "settings.fieldObservations": "Field observations", "settings.addObservation": "+ Add observation",
     "settings.calculator": "Calculator", "settings.dataBackup": "Data & backup",
+    "settings.calculatorSub": "Area, spray & fertilizer",
     "settings.exportBackup": "Export backup", "settings.restoreBackup": "Restore from backup",
     "settings.language": "Language",
 
@@ -451,6 +500,7 @@ const translations = {
 
     "field.date": "Date", "field.fillOnlyWhatSeen": "Fill in only what you actually saw today. Skip the rest.",
     "field.growthStage": "Growth stage", "field.leafCount": "Leaf count (optional)",
+    "obs.groupGrowth": "Growth", "obs.groupConditions": "Conditions", "obs.groupHealth": "Health", "obs.groupStorage": "Storage",
     "field.plantHeight": "Plant height, cm (optional)", "field.soilMoisture": "Soil moisture",
     "field.leafColour": "Leaf colour", "field.pestsSeen": "Pests seen", "field.diseaseSymptoms": "Disease symptoms",
     "field.topsStatus": "Tops / bulb status", "field.curingStatus": "Curing / neck condition",
@@ -460,6 +510,7 @@ const translations = {
     "field.noteOptional": "Note (optional)",
 
     "field.eventType": "Event type", "field.timeline": "timeline", "field.sprayType": "Spray type",
+    "field.detailsFor": "Details for",
     "field.fertilizerType": "Fertilizer type", "field.quantityKg": "Quantity (kg)", "field.outcome": "Outcome",
     "field.quantityGunia": "Quantity (gunia)", "field.priceTsh": "Price, Tsh (optional)",
     "field.transplantSpanQ": "Did transplanting span multiple days?",
@@ -565,7 +616,7 @@ const translations = {
     "fertwindow.windowLabel": "Window: day", "fertwindow.noSource": "No published guideline gives a specific window for this one \u2014 based on local practice."
   },
   sw: {
-    "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio",
+    "nav.home": "Nyumbani", "nav.why": "Kwa nini", "nav.history": "Historia", "nav.settings": "Mipangilio", "nav.finance": "Fedha",
 
     "common.cancel": "Ghairi", "common.save": "Hifadhi", "common.add": "Ongeza", "common.delete": "Futa",
     "common.edit": "Badilisha", "common.close": "Funga", "common.done": "Imekamilika", "common.back": "Rudi",
@@ -580,9 +631,27 @@ const translations = {
 
     "settings.title": "Mipangilio", "settings.farmProfile": "Taarifa za shamba", "settings.farmName": "Jina la shamba",
     "settings.cropType": "Aina ya zao", "settings.moreCrops": "Mazao mengine yataongezwa hapa baadaye.",
+    "settings.groupFarm": "Shamba", "settings.groupActions": "Vitendo", "settings.groupPlanning": "Mipango", "settings.groupData": "Data",
+    "finance.title": "Fedha", "finance.currentStock": "Akiba ya sasa",
+    "finance.noStock": "Hakuna akiba iliyofuatiliwa bado. Weka manunuzi au akiba yako ya sasa kuanza.",
+    "finance.logPurchase": "+ Weka manunuzi", "finance.logAdjustment": "+ Weka akiba / marekebisho",
+    "finance.brand": "Chapa (si lazima)", "finance.supplier": "Muuzaji (si lazima)",
+    "finance.reason": "Sababu", "finance.reason.opening_stock": "Akiba ya awali (niliyokuwa nayo tayari)",
+    "finance.reason.spillage": "Ilimwagika", "finance.reason.given_away": "Nilimpa mtu", "finance.reason.other": "Nyingine",
+    "finance.openingStockHint": "Kwa mbolea uliyokuwa nayo kabla ya kufuatilia akiba kwenye programu hii \u2014 si manunuzi, ni sehemu yako halisi ya kuanzia.",
+    "finance.enterValidQty": "Weka kiasi zaidi ya 0.",
+    "finance.outOfStock": "Haipo kwenye akiba", "finance.recentActivity": "Shughuli za hivi karibuni", "finance.noActivity": "Hakuna kilichowekwa bado.",
+    "finance.purchased": "Ilinunuliwa", "finance.deleteEntryQ": "Futa kumbukumbu hii?",
+    "finance.addFromSettings": "Weka manunuzi au marekebisho ya akiba kutoka Mipangilio \u2192 Vitendo.",
+    "settings.farmLocation": "Mahali", "settings.farmOwnership": "Umiliki",
+    "settings.ownershipOwned": "Ni langu", "settings.ownershipRental": "Nimepanga",
+    "settings.rentPerSeason": "Kodi kwa msimu, Tsh",
+    "settings.farmSize": "Ukubwa wa shamba (ekari)", "settings.farmSizeHint": "Ukubwa wa jumla wa shamba lako, tofauti na vipimo vya viwanja vilivyopandwa kwenye Kikokotoo cha Eneo.",
+    "settings.farmSeason": "Msimu", "settings.seasonRain": "Msimu wa mvua", "settings.seasonDry": "Msimu wa kiangazi",
     "settings.logNewEvent": "Weka kumbukumbu mpya", "settings.addNewEvent": "+ Ongeza kumbukumbu mpya",
     "settings.fieldObservations": "Uchunguzi wa shambani", "settings.addObservation": "+ Ongeza uchunguzi",
     "settings.calculator": "Kikokotoo", "settings.dataBackup": "Taarifa na nakala rudufu",
+    "settings.calculatorSub": "Eneo, dawa na mbolea",
     "settings.exportBackup": "Toa nakala rudufu", "settings.restoreBackup": "Rudisha kutoka nakala rudufu",
     "settings.language": "Lugha",
 
@@ -632,6 +701,7 @@ const translations = {
 
     "field.date": "Tarehe", "field.fillOnlyWhatSeen": "Jaza tu ulichokiona leo. Ruka mengine.",
     "field.growthStage": "Hatua ya ukuaji", "field.leafCount": "Idadi ya majani (si lazima)",
+    "obs.groupGrowth": "Ukuaji", "obs.groupConditions": "Hali", "obs.groupHealth": "Afya", "obs.groupStorage": "Uhifadhi",
     "field.plantHeight": "Urefu wa mmea, sm (si lazima)", "field.soilMoisture": "Unyevu wa udongo",
     "field.leafColour": "Rangi ya majani", "field.pestsSeen": "Wadudu waliionekana", "field.diseaseSymptoms": "Dalili za ugonjwa",
     "field.topsStatus": "Hali ya majani / balbu", "field.curingStatus": "Hali ya kukausha / shingo",
@@ -641,6 +711,7 @@ const translations = {
     "field.noteOptional": "Maelezo (si lazima)",
 
     "field.eventType": "Aina ya kumbukumbu", "field.timeline": "ratiba", "field.sprayType": "Aina ya dawa",
+    "field.detailsFor": "Maelezo ya",
     "field.fertilizerType": "Aina ya mbolea", "field.quantityKg": "Kiasi (kg)", "field.outcome": "Matokeo",
     "field.quantityGunia": "Kiasi (magunia)", "field.priceTsh": "Bei, Tsh (si lazima)",
     "field.transplantSpanQ": "Je, kuhamisha miche kulichukua zaidi ya siku moja?",
@@ -932,6 +1003,8 @@ function loadState(){
     if(!parsed || !parsed.farm || !parsed.events) return seedData();
     if(!parsed.observations) parsed.observations = []; // migrate saves from before Observations existed
     if(!parsed.areaBeds) parsed.areaBeds = []; // migrate saves from before the Area Calculator existed
+    if(!parsed.purchases) parsed.purchases = []; // migrate saves from before Supplies/inventory existed
+    if(!parsed.stockAdjustments) parsed.stockAdjustments = []; // same
     return parsed;
   }catch(err){ return seedData(); }
 }
@@ -2059,6 +2132,37 @@ function evaluateFarmEmergenceHistory(events){
   };
 }
 
+// ---- Supplies / Inventory (Finance) ----
+// Pure derived state, same pattern as evaluateBaselineCheck: computeInventory never stores a
+// running total anywhere — it recomputes from purchases + stockAdjustments + fertilizer
+// application events every time, so there's zero risk of the number drifting out of sync with
+// the underlying log (delete a purchase, the stock self-corrects automatically).
+// `known` deliberately only becomes true from a purchase or adjustment — never from
+// applications alone. A farmer who's only ever logged applying fertilizer (never told the app
+// what they started with) genuinely has an unknown baseline, not a knowable negative number;
+// collapsing "unknown" into "0" (or into a scary negative) was flagged as a real risk in review
+// and is exactly what this avoids. Opening stock (what a farmer already has when they start
+// using this feature) is stored as a stockAdjustment with reason "opening_stock", not a fake
+// purchase — keeps the purchase log honest as a record of things actually bought.
+const STOCK_ADJUSTMENT_REASONS = ["opening_stock", "spillage", "given_away", "other"];
+
+function computeInventory(state){
+  const stock = {};
+  function ensure(type){ if(!stock[type]) stock[type] = { quantityKg: 0, known: false }; return stock[type]; }
+  (state.purchases || []).forEach(function(p){
+    const s = ensure(p.fertilizerType); s.quantityKg += p.quantityKg; s.known = true;
+  });
+  (state.stockAdjustments || []).forEach(function(a){
+    const s = ensure(a.fertilizerType); s.quantityKg += a.quantityKg; s.known = true;
+  });
+  (state.events || []).forEach(function(ev){
+    if(ev.categoryId === "fertilizer" && ev.fertilizerType && ev.quantityKg){
+      ensure(ev.fertilizerType).quantityKg -= ev.quantityKg;
+    }
+  });
+  return stock;
+}
+
 // ---- Fertilizer Safety ----
 // Crop-agnostic on purpose: this is basic fertilizer chemistry (ammonia toxicity to
 // germinating seeds/young roots, and calcium-phosphate lock-up when incompatible products are
@@ -2517,6 +2621,14 @@ function IconWhy(active){
   return e("svg", {width:20,height:20,viewBox:"0 0 24 24",fill:"none"},
     e("path", {d:"M9 18h6M10 21h4", stroke:c, strokeWidth:2, strokeLinecap:"round"}),
     e("path", {d:"M12 3a6 6 0 00-3.5 10.9c.6.44 1 1.15 1 1.95V16h5v-.15c0-.8.4-1.5 1-1.95A6 6 0 0012 3z", stroke:c, strokeWidth:2, strokeLinejoin:"round"})
+  );
+}
+function IconFinance(active){
+  const c = active ? "var(--accent)" : "var(--text-muted)";
+  return e("svg", {width:20,height:20,viewBox:"0 0 24 24",fill:"none"},
+    e("rect", {x:3, y:6, width:18, height:13, rx:2, stroke:c, strokeWidth:2}),
+    e("path", {d:"M3 10h18", stroke:c, strokeWidth:2}),
+    e("circle", {cx:16.5, cy:14.5, r:1.4, fill:c})
   );
 }
 
@@ -3399,6 +3511,281 @@ function FertilizerCalculatorModal(props){
   );
 }
 
+// Purchase entry modal — a purchase always adds to stock. Keeping this a separate, simpler form
+// from the adjustment modal is deliberate: "I bought fertilizer" and "my stock needs correcting"
+// are different farmer actions with different fields (price/brand/supplier only make sense for
+// an actual purchase), even though both ultimately feed the same computeInventory() ledger.
+function PurchaseModal(props){
+  const [fertilizerType, setFertilizerType] = useState(FERTILIZER_TYPES[0]);
+  const [date, setDate] = useState(todayISO());
+  const [quantityKg, setQuantityKg] = useState("");
+  const [brand, setBrand] = useState("");
+  const [supplier, setSupplier] = useState("");
+  const [priceTsh, setPriceTsh] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+
+  function handleSave(){
+    const q = Number(quantityKg);
+    if(!quantityKg || isNaN(q) || q <= 0){ setError(t("finance.enterValidQty")); return; }
+    props.onSave({
+      id: "purchase" + Date.now(), date: date, fertilizerType: fertilizerType, quantityKg: q,
+      brand: brand.trim() || undefined, supplier: supplier.trim() || undefined,
+      priceTsh: priceTsh.trim() ? Number(priceTsh) : undefined, notes: notes.trim() || undefined
+    });
+    props.onClose();
+  }
+
+  return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, t("finance.logPurchase")),
+      e("div", { className:"field" }, e("label", null, t("field.date")),
+        e("input", { type:"date", value: date, onChange: function(ev){ setDate(ev.target.value); } })),
+      e("div", { className:"field" }, e("label", null, t("field.fertilizerType")),
+        e("select", { value: fertilizerType, onChange: function(ev){ setFertilizerType(ev.target.value); } },
+          FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); }))),
+      e("div", { className:"field" }, e("label", null, t("field.quantityKg")),
+        e("input", { type:"number", min:"0", inputMode:"decimal", value: quantityKg, placeholder:"e.g. 50", onChange: function(ev){ setQuantityKg(ev.target.value); } })),
+      e("div", { className:"field-row" },
+        e("div", { className:"field" }, e("label", null, t("finance.brand")),
+          e("input", { value: brand, onChange: function(ev){ setBrand(ev.target.value); } })),
+        e("div", { className:"field" }, e("label", null, t("finance.supplier")),
+          e("input", { value: supplier, onChange: function(ev){ setSupplier(ev.target.value); } }))
+      ),
+      e("div", { className:"field" }, e("label", null, t("field.priceTsh")),
+        e("input", { type:"number", min:"0", inputMode:"decimal", value: priceTsh, placeholder:"e.g. 85000", onChange: function(ev){ setPriceTsh(ev.target.value); } })),
+      e("div", { className:"field" }, e("label", null, t("field.notes")),
+        e("input", { value: notes, placeholder: t("field.notesPlaceholder"), onChange: function(ev){ setNotes(ev.target.value); } })),
+      error && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"8px" } }, error),
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-secondary", onClick: props.onClose }, t("common.cancel")),
+        e("button", { className:"btn btn-primary", onClick: handleSave }, t("common.save"))
+      )
+    )
+  );
+}
+
+// Stock adjustment modal — covers opening stock (what a farmer already had before using this
+// feature, stored as a positive adjustment rather than a fake purchase, keeping the purchase
+// log honest as a record of things actually bought), plus spillage/given-away/other corrections.
+// Quantity is signed: positive adds to stock, negative removes.
+function StockAdjustmentModal(props){
+  const [fertilizerType, setFertilizerType] = useState(FERTILIZER_TYPES[0]);
+  const [date, setDate] = useState(todayISO());
+  const [reason, setReason] = useState(STOCK_ADJUSTMENT_REASONS[0]);
+  const [quantityKg, setQuantityKg] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+
+  const isOpeningStock = reason === "opening_stock";
+
+  function handleSave(){
+    const raw = Number(quantityKg);
+    if(!quantityKg || isNaN(raw) || raw === 0){ setError(t("finance.enterValidQty")); return; }
+    // Opening stock and "found extra" are always a positive addition; spillage/given-away are
+    // always a removal — the farmer enters a plain positive number either way, sign is implicit
+    // in the reason, so they never have to think about minus signs.
+    const signed = (reason === "spillage" || reason === "given_away") ? -Math.abs(raw) : Math.abs(raw);
+    props.onSave({
+      id: "adj" + Date.now(), date: date, fertilizerType: fertilizerType, quantityKg: signed,
+      reason: reason, notes: notes.trim() || undefined
+    });
+    props.onClose();
+  }
+
+  return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, t("finance.logAdjustment")),
+      e("div", { className:"field" }, e("label", null, t("finance.reason")),
+        e("select", { value: reason, onChange: function(ev){ setReason(ev.target.value); } },
+          STOCK_ADJUSTMENT_REASONS.map(function(r){ return e("option", { value:r, key:r }, t("finance.reason." + r)); }))),
+      isOpeningStock && e("div", { className:"hint", style:{ marginBottom:"8px" } }, t("finance.openingStockHint")),
+      e("div", { className:"field" }, e("label", null, t("field.date")),
+        e("input", { type:"date", value: date, onChange: function(ev){ setDate(ev.target.value); } })),
+      e("div", { className:"field" }, e("label", null, t("field.fertilizerType")),
+        e("select", { value: fertilizerType, onChange: function(ev){ setFertilizerType(ev.target.value); } },
+          FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); }))),
+      e("div", { className:"field" }, e("label", null, t("field.quantityKg")),
+        e("input", { type:"number", min:"0", inputMode:"decimal", value: quantityKg, placeholder:"e.g. 5", onChange: function(ev){ setQuantityKg(ev.target.value); } })),
+      e("div", { className:"field" }, e("label", null, t("field.notes")),
+        e("input", { value: notes, placeholder: t("field.notesPlaceholder"), onChange: function(ev){ setNotes(ev.target.value); } })),
+      error && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"8px" } }, error),
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-secondary", onClick: props.onClose }, t("common.cancel")),
+        e("button", { className:"btn btn-primary", onClick: handleSave }, t("common.save"))
+      )
+    )
+  );
+}
+
+// Finance / Supplies screen — stock is never stored, only ever computeInventory()'d fresh from
+// purchases + stockAdjustments + fertilizer application events, so it can never drift from the
+// underlying log. A fertilizer type only appears once it has at least one purchase or
+// adjustment (known === true) — a type with only application events and no purchase/adjustment
+// history stays invisible here rather than showing a misleading 0 or negative number, since the
+// app genuinely doesn't know that type's starting point.
+function FinanceScreen(props){
+  const state = props.state;
+  const [confirmDelete, setConfirmDelete] = useState(null); // { kind:"purchase"|"adjustment", id }
+
+  const inventory = useMemo(function(){ return computeInventory(state); }, [state.purchases, state.stockAdjustments, state.events]);
+  const trackedTypes = Object.keys(inventory).filter(function(k){ return inventory[k].known; })
+    .sort(function(a,b){ return a.localeCompare(b); });
+
+  const ledger = useMemo(function(){
+    const purchases = (state.purchases || []).map(function(p){ return { kind:"purchase", id:p.id, date:p.date, fertilizerType:p.fertilizerType, quantityKg:p.quantityKg, detail:p }; });
+    const adjustments = (state.stockAdjustments || []).map(function(a){ return { kind:"adjustment", id:a.id, date:a.date, fertilizerType:a.fertilizerType, quantityKg:a.quantityKg, detail:a }; });
+    return purchases.concat(adjustments).sort(function(x,y){ return y.date.localeCompare(x.date); });
+  }, [state.purchases, state.stockAdjustments]);
+
+  function doDelete(){
+    if(!confirmDelete) return;
+    if(confirmDelete.kind === "purchase") props.onDeletePurchase(confirmDelete.id);
+    else props.onDeleteStockAdjustment(confirmDelete.id);
+    setConfirmDelete(null);
+  }
+
+  return e("div", { style:{ paddingBottom:"76px" } },
+    e("div", { className:"header" }, e("div", { className:"farmname" }, t("finance.title"))),
+
+    e("div", { className:"section-label" }, t("finance.currentStock") ),
+    trackedTypes.length === 0
+      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, t("finance.noStock")))
+      : e("div", { style:{ margin:"0 16px" } }, trackedTypes.map(function(type){
+          const s = inventory[type];
+          const low = s.quantityKg <= 0;
+          return e("div", { className:"bed-row", key: type },
+            e("div", null,
+              e("div", { style:{ fontSize:"13px", fontWeight:700 } }, optionLabel(type)),
+              low && e("div", { className:"hint", style:{ color:"var(--status-danger)" } }, t("finance.outOfStock"))
+            ),
+            e("div", { style:{ fontSize:"15px", fontWeight:700, color: low ? "var(--status-danger)" : "var(--text-primary)" } }, s.quantityKg.toFixed(1) + " kg")
+          );
+        })),
+
+    e("div", { className:"hint", style:{ margin:"8px 20px 0" } }, t("finance.addFromSettings")),
+
+    e("div", { className:"section-label" }, t("finance.recentActivity")),
+    ledger.length === 0
+      ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, t("finance.noActivity")))
+      : e("div", { style:{ margin:"0 16px" } }, ledger.map(function(item){
+          const sign = item.quantityKg >= 0 ? "+" : "";
+          const desc = item.kind === "purchase"
+            ? [item.detail.brand, item.detail.supplier].filter(Boolean).join(" \u00b7 ") || t("finance.purchased")
+            : t("finance.reason." + item.detail.reason);
+          return e("div", { className:"bed-row", key: item.kind + item.id, onClick: function(){ setConfirmDelete({ kind:item.kind, id:item.id }); }, style:{ cursor:"pointer" } },
+            e("div", null,
+              e("div", { style:{ fontSize:"13px", fontWeight:700 } }, optionLabel(item.fertilizerType) + " \u00b7 " + relativeLabel(daysSince(item.date))),
+              e("div", { className:"hint" }, desc)
+            ),
+            e("div", { style:{ fontSize:"14px", fontWeight:700, color: item.quantityKg >= 0 ? "var(--accent)" : "var(--status-danger)" } }, sign + item.quantityKg.toFixed(1) + " kg")
+          );
+        })),
+
+    confirmDelete && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setConfirmDelete(null); } },
+      e("div", { className:"modal" },
+        e("h2", null, t("finance.deleteEntryQ")),
+        e("div", { className:"hint", style:{ marginBottom:"10px" } }, t("common.cantBeUndone")),
+        e("div", { className:"modal-actions" },
+          e("button", { className:"btn btn-secondary", onClick: function(){ setConfirmDelete(null); } }, t("common.cancel")),
+          e("button", { className:"btn btn-primary", style:{ background:"var(--status-danger)", color:"#fff" }, onClick: doDelete }, t("common.delete"))
+        )
+      )
+    )
+  );
+}
+
+function farmInitials(name){
+  if(!name) return "F";
+  const parts = name.trim().split(/\s+/);
+  if(parts.length === 1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+function miniIcon(children, size){
+  return e("svg", { width:size||13, height:size||13, viewBox:"0 0 24 24", fill:"none", stroke:"currentColor", strokeWidth:2, strokeLinecap:"round", strokeLinejoin:"round" }, children);
+}
+function IconPin(size){ return miniIcon([e("path", { key:1, d:"M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" }), e("circle", { key:2, cx:12, cy:10, r:3 })], size); }
+function IconLeaf(size){ return miniIcon(e("path", { d:"M12 2C7 2 3 6 3 11c0 3.5 2 6.5 5 8.5L12 22l4-2.5c3-2 5-5 5-8.5 0-5-4-9-9-9z" }), size); }
+function IconOwnership(size){ return miniIcon([e("rect", { key:1, x:3, y:3, width:18, height:18, rx:2 }), e("path", { key:2, d:"M3 9h18" })], size); }
+function IconSeason(size){ return miniIcon([e("circle", { key:1, cx:12, cy:12, r:4 }), e("path", { key:2, d:"M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" })], size); }
+function IconBarn(size){ return miniIcon([e("path", { key:1, d:"M4 22h16a2 2 0 002-2V6l-3-4H5L2 6v14a2 2 0 002 2z" }), e("path", { key:2, d:"M15 22v-4H9v4" })], size); }
+function IconEditPencil(size){ return miniIcon([e("path", { key:1, d:"M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" }), e("path", { key:2, d:"M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" })], size); }
+function IconCalcSmall(size){ return miniIcon([e("rect", { key:1, x:4, y:4, width:16, height:16, rx:2 }), e("path", { key:2, d:"M4 10h16M10 4v16" })], size); }
+function IconPlusSmall(size){ return miniIcon(e("path", { d:"M12 5v14M5 12h14" }), size); }
+function IconObsSmall(size){ return IconEditPencil(size); }
+function IconPurchaseSmall(size){ return miniIcon([e("path", { key:1, d:"M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" }), e("line", { key:2, x1:3, y1:6, x2:21, y2:6 }), e("path", { key:3, d:"M16 10a4 4 0 01-8 0" })], size); }
+function IconStockSmall(size){ return miniIcon(e("path", { d:"M12 20V10M18 20V4M6 20v-4" }), size); }
+function IconExportSmall(size){ return miniIcon([e("path", { key:1, d:"M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" }), e("polyline", { key:2, points:"7 10 12 15 17 10" }), e("line", { key:3, x1:12, y1:15, x2:12, y2:3 })], size); }
+function IconImportSmall(size){ return miniIcon([e("path", { key:1, d:"M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" }), e("polyline", { key:2, points:"17 8 12 3 7 8" }), e("line", { key:3, x1:12, y1:3, x2:12, y2:15 })], size); }
+function IconPeopleSmall(size){ return miniIcon([e("path", { key:1, d:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" }), e("circle", { key:2, cx:9, cy:7, r:4 }), e("path", { key:3, d:"M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" })], size); }
+function IconGlobeSmall(size){ return miniIcon([e("circle", { key:1, cx:12, cy:12, r:10 }), e("line", { key:2, x1:2, y1:12, x2:22, y2:12 }), e("path", { key:3, d:"M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" })], size); }
+
+// Farm profile edit modal — the fields used to sit always-visible/inline in Settings; moved
+// here behind an explicit edit action once the Farm Identity card replaced that with a compact
+// summary. Same commit-on-blur pattern as before per field, just now inside a modal shell.
+function FarmProfileModal(props){
+  const state = props.state, onUpdateFarm = props.onUpdateFarm;
+
+  const [farmName, setFarmName] = useState(state.farm.name);
+  useEffect(function(){ setFarmName(state.farm.name); }, [state.farm.name]);
+  function commitFarmName(){ if(farmName.trim() && farmName !== state.farm.name){ onUpdateFarm({ name: farmName.trim() }); } }
+
+  const [farmLocation, setFarmLocation] = useState(state.farm.location || "");
+  useEffect(function(){ setFarmLocation(state.farm.location || ""); }, [state.farm.location]);
+  function commitFarmLocation(){ if(farmLocation !== (state.farm.location || "")) onUpdateFarm({ location: farmLocation.trim() || undefined }); }
+
+  const [farmOwnership, setFarmOwnership] = useState(state.farm.ownership || "owned");
+  useEffect(function(){ setFarmOwnership(state.farm.ownership || "owned"); }, [state.farm.ownership]);
+  function commitFarmOwnership(v){ setFarmOwnership(v); onUpdateFarm({ ownership: v, rentPerSeasonTsh: v === "owned" ? undefined : state.farm.rentPerSeasonTsh }); }
+
+  const [farmRent, setFarmRent] = useState(state.farm.rentPerSeasonTsh != null ? String(state.farm.rentPerSeasonTsh) : "");
+  useEffect(function(){ setFarmRent(state.farm.rentPerSeasonTsh != null ? String(state.farm.rentPerSeasonTsh) : ""); }, [state.farm.rentPerSeasonTsh]);
+  function commitFarmRent(){
+    const n = farmRent.trim() ? Number(farmRent) : undefined;
+    if(n !== state.farm.rentPerSeasonTsh) onUpdateFarm({ rentPerSeasonTsh: (n != null && !isNaN(n)) ? n : undefined });
+  }
+
+  const [farmSize, setFarmSize] = useState(state.farm.sizeAcres != null ? String(state.farm.sizeAcres) : "");
+  useEffect(function(){ setFarmSize(state.farm.sizeAcres != null ? String(state.farm.sizeAcres) : ""); }, [state.farm.sizeAcres]);
+  function commitFarmSize(){
+    const n = farmSize.trim() ? Number(farmSize) : undefined;
+    if(n !== state.farm.sizeAcres) onUpdateFarm({ sizeAcres: (n != null && !isNaN(n)) ? n : undefined });
+  }
+
+  const [farmSeason, setFarmSeason] = useState(state.farm.season || "rain");
+  useEffect(function(){ setFarmSeason(state.farm.season || "rain"); }, [state.farm.season]);
+  function commitFarmSeason(v){ setFarmSeason(v); onUpdateFarm({ season: v }); }
+
+  return e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) props.onClose(); } },
+    e("div", { className:"modal" },
+      e("h2", null, t("settings.farmProfile")),
+      e("div", { className:"field" }, e("label", null, t("settings.farmName")),
+        e("input", { value: farmName, onChange: function(ev){ setFarmName(ev.target.value); }, onBlur: commitFarmName })),
+      e("div", { className:"field" }, e("label", null, t("settings.farmLocation")),
+        e("input", { value: farmLocation, onChange: function(ev){ setFarmLocation(ev.target.value); }, onBlur: commitFarmLocation })),
+      e("div", { className:"field" }, e("label", null, t("settings.farmOwnership")),
+        e("select", { value: farmOwnership, onChange: function(ev){ commitFarmOwnership(ev.target.value); } },
+          e("option", { value:"owned" }, t("settings.ownershipOwned")),
+          e("option", { value:"rental" }, t("settings.ownershipRental")))),
+      farmOwnership === "rental" && e("div", { className:"field" }, e("label", null, t("settings.rentPerSeason")),
+        e("input", { type:"number", inputMode:"decimal", value: farmRent, onChange: function(ev){ setFarmRent(ev.target.value); }, onBlur: commitFarmRent })),
+      e("div", { className:"field" }, e("label", null, t("settings.farmSize")),
+        e("input", { type:"number", inputMode:"decimal", value: farmSize, onChange: function(ev){ setFarmSize(ev.target.value); }, onBlur: commitFarmSize }),
+        e("div", { className:"hint" }, t("settings.farmSizeHint"))),
+      e("div", { className:"field" }, e("label", null, t("settings.farmSeason")),
+        e("select", { value: farmSeason, onChange: function(ev){ commitFarmSeason(ev.target.value); } },
+          e("option", { value:"rain" }, t("settings.seasonRain")),
+          e("option", { value:"dry" }, t("settings.seasonDry")))),
+      e("div", { className:"field" }, e("label", null, t("settings.cropType")),
+        e("select", { value: state.farm.cropType, disabled: true }, e("option", { value:"onion" }, "Onion")),
+        e("div", { className:"hint" }, t("settings.moreCrops"))),
+      e("div", { className:"modal-actions" },
+        e("button", { className:"btn btn-primary", onClick: props.onClose }, t("common.done"))
+      )
+    )
+  );
+}
+
 function SettingsScreen(props){
   const state = props.state;
   const onUpdateFarm = props.onUpdateFarm, onOpenAddEvent = props.onOpenAddEvent, onOpenAddObservation = props.onOpenAddObservation;
@@ -3406,9 +3793,7 @@ function SettingsScreen(props){
   const syncMeta = props.syncMeta || { farmCode:null, needsSync:false };
   const onCreateSharedFarm = props.onCreateSharedFarm, onJoinSharedFarm = props.onJoinSharedFarm, onLeaveSharedFarm = props.onLeaveSharedFarm;
 
-  const [farmName, setFarmName] = useState(state.farm.name);
-  useEffect(function(){ setFarmName(state.farm.name); }, [state.farm.name]);
-  function commitFarmName(){ if(farmName.trim() && farmName !== state.farm.name){ onUpdateFarm({ name: farmName.trim() }); } }
+  const [farmEditOpen, setFarmEditOpen] = useState(false);
 
   const [exportOpen, setExportOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
@@ -3463,7 +3848,9 @@ function SettingsScreen(props){
       farm: state.farm,
       events: state.events,
       observations: state.observations || [],
-      areaBeds: state.areaBeds || []
+      areaBeds: state.areaBeds || [],
+      purchases: state.purchases || [],
+      stockAdjustments: state.stockAdjustments || []
     }, null, 2);
   }
 
@@ -3502,7 +3889,9 @@ function SettingsScreen(props){
       farm: parsed.farm,
       events: parsed.events,
       observations: Array.isArray(parsed.observations) ? parsed.observations : [],
-      areaBeds: Array.isArray(parsed.areaBeds) ? parsed.areaBeds : []
+      areaBeds: Array.isArray(parsed.areaBeds) ? parsed.areaBeds : [],
+      purchases: Array.isArray(parsed.purchases) ? parsed.purchases : [],
+      stockAdjustments: Array.isArray(parsed.stockAdjustments) ? parsed.stockAdjustments : []
     });
     setRestoreOpen(false);
   }
@@ -3513,46 +3902,65 @@ function SettingsScreen(props){
   return e("div", { style:{ paddingBottom:"76px" } },
     e("div", { className:"header" }, e("div", { className:"farmname" }, t("settings.title"))),
 
-    e("div", { className:"section-label" }, t("settings.farmProfile")),
-    e("div", { className:"settings-block" },
-      e("div", { className:"field" }, e("label", null, t("settings.farmName")),
-        e("input", { value: farmName, onChange: function(ev){ setFarmName(ev.target.value); }, onBlur: commitFarmName })),
-      e("div", { className:"field" }, e("label", null, t("settings.cropType")),
-        e("select", { value: state.farm.cropType, disabled: true }, e("option", { value:"onion" }, "Onion")),
-        e("div", { className:"hint" }, t("settings.moreCrops")))
+    // Farm Identity card — compact summary replacing the always-visible full form; tap the
+    // edit button to open FarmProfileModal for the actual editing. Chips are omitted entirely
+    // when a field has never been set, rather than showing an empty/placeholder chip.
+    e("div", { className:"farm-card" },
+      e("div", { className:"farm-card-head" },
+        e("div", { className:"farm-avatar" }, farmInitials(state.farm.name)),
+        e("div", { className:"farm-title-row" },
+          e("div", { className:"farm-name" }, state.farm.name || t("settings.title")),
+          e("button", { className:"edit-btn", onClick: function(){ setFarmEditOpen(true); } }, IconEditPencil(14))
+        )
+      ),
+      e("div", { className:"meta-row" },
+        state.farm.location && e("span", { className:"meta-chip" }, IconPin(13), state.farm.location),
+        e("span", { className:"meta-chip accent" }, IconLeaf(13), state.farm.cropType === "onion" ? (currentLang === "sw" ? "Vitunguu" : "Onion") : state.farm.cropType),
+        e("span", { className:"meta-chip" }, IconOwnership(13), state.farm.ownership === "rental" ? t("settings.ownershipRental") : t("settings.ownershipOwned")),
+        state.farm.season && e("span", { className:"meta-chip" }, IconSeason(13), state.farm.season === "dry" ? t("settings.seasonDry") : t("settings.seasonRain")),
+        state.farm.sizeAcres != null && e("span", { className:"meta-chip" }, IconBarn(13), state.farm.sizeAcres + " " + (currentLang === "sw" ? "ekari" : "acres"))
+      )
     ),
 
-    e("div", { className:"section-label" }, t("settings.logNewEvent")),
-    e("div", { className:"settings-block" },
-      e("button", { className:"add-btn", onClick: onOpenAddEvent }, t("settings.addNewEvent"))
+    e("div", { className:"settings-group-header" }, t("settings.groupActions")),
+    e("div", { className:"card-new" },
+      e("button", { className:"data-row icon-row", onClick: onOpenAddEvent },
+        e("span", { className:"row-icon accent" }, IconPlusSmall(16)), e("span", null, t("settings.addNewEvent")), e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row icon-row", onClick: onOpenAddObservation },
+        e("span", { className:"row-icon accent" }, IconObsSmall(16)), e("span", null, t("settings.addObservation")), e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row icon-row", onClick: props.onOpenAddPurchase },
+        e("span", { className:"row-icon" }, IconPurchaseSmall(16)), e("span", null, t("finance.logPurchase")), e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row icon-row", onClick: props.onOpenAddStockAdjustment },
+        e("span", { className:"row-icon" }, IconStockSmall(16)), e("span", null, t("finance.logAdjustment")), e("span", { className:"chev" }, "›"))
     ),
 
-    e("div", { className:"section-label" }, t("settings.fieldObservations")),
-    e("div", { className:"settings-block" },
-      e("button", { className:"add-btn", onClick: onOpenAddObservation }, t("settings.addObservation"))
-    ),
-
-    e("div", { className:"section-label" }, t("settings.calculator")),
-    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
-      e("button", { className:"data-row", onClick: function(){ setCalcMenuOpen(true); } },
-        e("span", null, t("settings.calculator")),
+    e("div", { className:"settings-group-header" }, t("settings.groupPlanning")),
+    e("div", { className:"card-new" },
+      e("button", { className:"data-row icon-row", onClick: function(){ setCalcMenuOpen(true); } },
+        e("span", { className:"row-icon accent" }, IconCalcSmall(16)),
+        e("div", { className:"row-content-new" }, e("div", null, t("settings.calculator")), e("div", { className:"row-value-new" }, t("settings.calculatorSub"))),
         e("span", { className:"chev" }, "›"))
     ),
 
-    e("div", { className:"section-label" }, t("settings.dataBackup")),
-    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
-      e("button", { className:"data-row", onClick: openExport }, e("span", null, t("settings.exportBackup")), e("span", { className:"chev" }, "›")),
-      e("button", { className:"data-row", onClick: openRestore }, e("span", null, t("settings.restoreBackup")), e("span", { className:"chev" }, "›"))
-    ),
-
-    e("div", { className:"section-label" }, t("settings.sharedFarm")),
-    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
-      e("button", { className:"data-row", onClick: openSharedFarmMenu },
-        e("span", null, syncMeta.farmCode
-          ? (t("settings.yourFarmCode") + ": " + syncMeta.farmCode)
-          : (t("settings.sharedFarm") + ": " + t("settings.sharedFarmNotSet"))),
+    e("div", { className:"settings-group-header" }, t("settings.groupData")),
+    e("div", { className:"card-new" },
+      e("button", { className:"data-row icon-row", onClick: openExport },
+        e("span", { className:"row-icon" }, IconExportSmall(16)), e("span", null, t("settings.exportBackup")), e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row icon-row", onClick: openRestore },
+        e("span", { className:"row-icon" }, IconImportSmall(16)), e("span", null, t("settings.restoreBackup")), e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row icon-row", onClick: openSharedFarmMenu },
+        e("span", { className:"row-icon" }, IconPeopleSmall(16)),
+        e("div", { className:"row-content-new" }, e("div", null, t("settings.sharedFarm")),
+          e("div", { className:"row-value-new" }, syncMeta.farmCode ? (t("settings.yourFarmCode") + ": " + syncMeta.farmCode) : t("settings.sharedFarmNotSet"))),
+        e("span", { className:"chev" }, "›")),
+      e("button", { className:"data-row icon-row", onClick: function(){ setLangMenuOpen(true); } },
+        e("span", { className:"row-icon" }, IconGlobeSmall(16)),
+        e("div", { className:"row-content-new" }, e("div", null, t("settings.languageRow")),
+          e("div", { className:"row-value-new" }, lang === "sw" ? "Kiswahili" : "English")),
         e("span", { className:"chev" }, "›"))
     ),
+
+    farmEditOpen && e(FarmProfileModal, { state: state, onUpdateFarm: onUpdateFarm, onClose: function(){ setFarmEditOpen(false); } }),
 
     sharedFarmMenuOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setSharedFarmMenuOpen(false); } },
       e("div", { className:"modal" },
@@ -3613,13 +4021,6 @@ function SettingsScreen(props){
           )
         )
       )
-    ),
-
-    e("div", { className:"section-label" }, t("settings.language")),
-    e("div", { className:"settings-block", style:{ padding:"4px 16px" } },
-      e("button", { className:"data-row", onClick: function(){ setLangMenuOpen(true); } },
-        e("span", null, t("settings.languageRow") + ": " + (lang === "sw" ? "Kiswahili" : "English")),
-        e("span", { className:"chev" }, "›"))
     ),
 
     langMenuOpen && e("div", { className:"modal-overlay", onClick: function(ev){ if(ev.target===ev.currentTarget) setLangMenuOpen(false); } },
@@ -3744,7 +4145,7 @@ function App(){
         if(prevMeta.farmCode !== code) return prevMeta; // a stale callback from a farm we've since left
         if(remote.updatedAt && remote.updatedAt > prevMeta.updatedAt){
           skipNextSyncPush.current = true;
-          setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [] });
+          setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [], purchases: remote.purchases || [], stockAdjustments: remote.stockAdjustments || [] });
           const nextMeta = { farmCode: code, updatedAt: remote.updatedAt, needsSync:false };
           saveSyncMeta(nextMeta);
           return nextMeta;
@@ -3811,7 +4212,7 @@ function App(){
     return fbFetchState(code).then(function(remote){
       if(!remote) return { ok:false, reason:"not-found" };
       skipNextSyncPush.current = true;
-      setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [] });
+      setState({ farm: remote.farm, events: remote.events || [], observations: remote.observations || [], areaBeds: remote.areaBeds || [], purchases: remote.purchases || [], stockAdjustments: remote.stockAdjustments || [] });
       const meta = { farmCode: code, updatedAt: remote.updatedAt || Date.now(), needsSync:false };
       saveSyncMeta(meta); setSyncMeta(meta);
       return { ok:true };
@@ -3839,7 +4240,19 @@ function App(){
   }
   function deleteObservation(id){ setState(function(prev){ return Object.assign({}, prev, { observations: (prev.observations||[]).filter(function(o){ return o.id !== id; }) }); }); }
 
-  function restoreState(newState){ setState({ farm: newState.farm, events: newState.events, observations: newState.observations || [], areaBeds: newState.areaBeds || [] }); }
+  function addPurchase(p){ setState(function(prev){ return Object.assign({}, prev, { purchases: (prev.purchases||[]).concat([p]) }); }); }
+  function deletePurchase(id){ setState(function(prev){ return Object.assign({}, prev, { purchases: (prev.purchases||[]).filter(function(p){ return p.id !== id; }) }); }); }
+  function addStockAdjustment(a){ setState(function(prev){ return Object.assign({}, prev, { stockAdjustments: (prev.stockAdjustments||[]).concat([a]) }); }); }
+  function deleteStockAdjustment(id){ setState(function(prev){ return Object.assign({}, prev, { stockAdjustments: (prev.stockAdjustments||[]).filter(function(a){ return a.id !== id; }) }); }); }
+
+  function restoreState(newState){ setState({ farm: newState.farm, events: newState.events, observations: newState.observations || [], areaBeds: newState.areaBeds || [], purchases: newState.purchases || [], stockAdjustments: newState.stockAdjustments || [] }); }
+
+  // Purchase / stock-adjustment add modals — shared by Settings ("+ Log a purchase" / "+ Set
+  // stock / adjustment"), same pattern as the Event modal below. Adding a record always happens
+  // via Settings; Finance itself stays a read-only display (current stock + ledger), matching
+  // how every other screen in this app works — user explicitly asked for this consistency.
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
 
   // Event add/edit modal — shared by Settings ("+ Add new event") and History (double-tap an activity).
   const [modalOpen, setModalOpen] = useState(false);
@@ -3965,8 +4378,10 @@ function App(){
           onDeleteObservation: function(id){ setObsConfirmDeleteId(id); }
         }))
       : tab === "why" ? e(WhyScreen, { state: state, focus: whyFocus })
+      : tab === "finance" ? e(FinanceScreen, { state: state, onDeletePurchase: deletePurchase, onDeleteStockAdjustment: deleteStockAdjustment })
       : e(SettingsScreen, { state: state, onUpdateFarm: updateFarm, onOpenAddEvent: function(){ openAddModal(); },
           onOpenAddObservation: openAddObsModal, onRestoreState: restoreState,
+          onOpenAddPurchase: function(){ setPurchaseOpen(true); }, onOpenAddStockAdjustment: function(){ setAdjustOpen(true); },
           onAddAreaBed: addAreaBed, onRemoveAreaBed: removeAreaBed, lang: lang, onSetLang: setLang,
           syncMeta: syncMeta, onCreateSharedFarm: createSharedFarm, onJoinSharedFarm: joinSharedFarm, onLeaveSharedFarm: leaveSharedFarm }),
 
@@ -3978,30 +4393,47 @@ function App(){
             CATEGORIES.map(function(c){ return e("option", { value:c.id, key:c.id }, categoryLabel(c.id) + (c.kind==="milestone" ? " (" + t("field.timeline") + ")" : "")); })
           )
         ),
-        formCategory === "spray" && e("div", { className:"field" }, e("label", null, t("field.sprayType")),
-          e("select", { value: formSprayType, onChange: function(ev){ setFormSprayType(ev.target.value); } },
-            SPRAY_TYPES.map(function(st){ return e("option", { value:st, key:st }, optionLabel(st)); })
-          )
-        ),
-        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, t("field.fertilizerType")),
-          e("select", { value: formFertilizerType, onChange: function(ev){ setFormFertilizerType(ev.target.value); } },
-            FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); })
-          )
-        ),
-        formCategory === "fertilizer" && e("div", { className:"field" }, e("label", null, t("field.quantityKg")),
-          e("input", { type:"number", min:"0", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
-        ),
-        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, t("field.outcome")),
-          e("select", { value: formOutcome, onChange: function(ev){ setFormOutcome(ev.target.value); } },
-            DISPOSITION_OPTIONS.map(function(o){ return e("option", { value:o, key:o }, optionLabel(o)); })
-          )
-        ),
-        formCategory === "stored_sold" && e("div", { className:"field" }, e("label", null, t("field.quantityGunia")),
-          e("input", { type:"number", min:"0", inputMode:"numeric", value: formQuantityGunia, placeholder: "e.g. 6", onChange: function(ev){ setFormQuantityGunia(ev.target.value); } })
-        ),
-        formCategory === "stored_sold" && formOutcome === "Sold" && e("div", { className:"field" }, e("label", null, t("field.priceTsh")),
-          e("input", { type:"number", min:"0", inputMode:"decimal", value: formPriceTsh, placeholder: "e.g. 450000", onChange: function(ev){ setFormPriceTsh(ev.target.value); } })
-        ),
+
+        // Category-specific fields get their own labeled group, visually separated from the
+        // universal date/notes fields below — previously these sat flush against each other
+        // with identical styling, making it hard to tell which fields actually belonged to the
+        // chosen category. Only rendered at all when the category has extra fields.
+        (formCategory === "spray" || formCategory === "fertilizer" || formCategory === "stored_sold") &&
+          e("div", { className:"modal-field-group" },
+            e("div", { className:"modal-field-group-label" }, t("field.detailsFor") + " " + categoryLabel(formCategory)),
+
+            formCategory === "spray" && e("div", { className:"field" }, e("label", null, t("field.sprayType")),
+              e("select", { value: formSprayType, onChange: function(ev){ setFormSprayType(ev.target.value); } },
+                SPRAY_TYPES.map(function(st){ return e("option", { value:st, key:st }, optionLabel(st)); })
+              )
+            ),
+
+            formCategory === "fertilizer" && e("div", { className:"field-row" },
+              e("div", { className:"field" }, e("label", null, t("field.fertilizerType")),
+                e("select", { value: formFertilizerType, onChange: function(ev){ setFormFertilizerType(ev.target.value); } },
+                  FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); })
+                )
+              ),
+              e("div", { className:"field" }, e("label", null, t("field.quantityKg")),
+                e("input", { type:"number", min:"0", inputMode:"decimal", value: formQuantityKg, placeholder: "e.g. 50", onChange: function(ev){ setFormQuantityKg(ev.target.value); } })
+              )
+            ),
+
+            formCategory === "stored_sold" && e("div", { className:"field-row" },
+              e("div", { className:"field" }, e("label", null, t("field.outcome")),
+                e("select", { value: formOutcome, onChange: function(ev){ setFormOutcome(ev.target.value); } },
+                  DISPOSITION_OPTIONS.map(function(o){ return e("option", { value:o, key:o }, optionLabel(o)); })
+                )
+              ),
+              e("div", { className:"field" }, e("label", null, t("field.quantityGunia")),
+                e("input", { type:"number", min:"0", inputMode:"numeric", value: formQuantityGunia, placeholder: "e.g. 6", onChange: function(ev){ setFormQuantityGunia(ev.target.value); } })
+              )
+            ),
+            formCategory === "stored_sold" && formOutcome === "Sold" && e("div", { className:"field" }, e("label", null, t("field.priceTsh")),
+              e("input", { type:"number", min:"0", inputMode:"decimal", value: formPriceTsh, placeholder: "e.g. 450000", onChange: function(ev){ setFormPriceTsh(ev.target.value); } })
+            )
+          ),
+
         formCategory === "transplanting" && e("div", { className:"field" },
           e("label", { style:{ display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" } },
             e("input", { type:"checkbox", checked: formMultiDay, onChange: function(ev){
@@ -4055,19 +4487,36 @@ function App(){
         e("div", { className:"hint", style:{ marginBottom:"12px" } }, t("field.fillOnlyWhatSeen")),
         e("div", { className:"field" }, e("label", null, t("field.date")),
           e("input", { type:"date", value: obsDate, onChange: function(ev){ setObsDate(ev.target.value); } })),
-        e(OptionalSelect, { label:t("field.growthStage"), value: obsStage, onChange: setObsStage, options: OBS_STAGE_OPTIONS }),
-        e("div", { className:"field" }, e("label", null, t("field.leafCount")),
-          e("input", { type:"number", min:"0", inputMode:"numeric", value: obsLeafCount, placeholder:"e.g. 4", onChange: function(ev){ setObsLeafCount(ev.target.value); } })),
-        e("div", { className:"field" }, e("label", null, t("field.plantHeight")),
-          e("input", { type:"number", min:"0", inputMode:"decimal", value: obsHeightCm, placeholder:"e.g. 15", onChange: function(ev){ setObsHeightCm(ev.target.value); } })),
-        e(OptionalSelect, { label:t("field.soilMoisture"), value: obsMoisture, onChange: setObsMoisture, options: OBS_MOISTURE_OPTIONS }),
-        e(OptionalSelect, { label:t("field.leafColour"), value: obsLeafColor, onChange: setObsLeafColor, options: OBS_LEAF_COLOR_OPTIONS }),
-        e(OptionalSelect, { label:t("field.pestsSeen"), value: obsPest, onChange: setObsPest, options: OBS_PEST_OPTIONS }),
-        e(OptionalSelect, { label:t("field.diseaseSymptoms"), value: obsDisease, onChange: setObsDisease, options: OBS_DISEASE_OPTIONS }),
-        e(OptionalSelect, { label:t("field.topsStatus"), value: obsTops, onChange: setObsTops, options: OBS_TOPS_OPTIONS }),
-        e(OptionalSelect, { label:t("field.curingStatus"), value: obsCuring, onChange: setObsCuring, options: OBS_CURING_OPTIONS }),
-        e(OptionalSelect, { label:t("field.sunlightEffect"), value: obsSunlight, onChange: setObsSunlight, options: OBS_SUNLIGHT_OPTIONS }),
-        e(OptionalSelect, { label:t("field.weather"), value: obsWeather, onChange: setObsWeather, options: OBS_WEATHER_OPTIONS }),
+
+        e("div", { className:"modal-field-group" },
+          e("div", { className:"modal-field-group-label" }, t("obs.groupGrowth")),
+          e(OptionalSelect, { label:t("field.growthStage"), value: obsStage, onChange: setObsStage, options: OBS_STAGE_OPTIONS }),
+          e("div", { className:"field" }, e("label", null, t("field.leafCount")),
+            e("input", { type:"number", min:"0", inputMode:"numeric", value: obsLeafCount, placeholder:"e.g. 4", onChange: function(ev){ setObsLeafCount(ev.target.value); } })),
+          e("div", { className:"field" }, e("label", null, t("field.plantHeight")),
+            e("input", { type:"number", min:"0", inputMode:"decimal", value: obsHeightCm, placeholder:"e.g. 15", onChange: function(ev){ setObsHeightCm(ev.target.value); } }))
+        ),
+
+        e("div", { className:"modal-field-group" },
+          e("div", { className:"modal-field-group-label" }, t("obs.groupConditions")),
+          e(OptionalSelect, { label:t("field.soilMoisture"), value: obsMoisture, onChange: setObsMoisture, options: OBS_MOISTURE_OPTIONS }),
+          e(OptionalSelect, { label:t("field.weather"), value: obsWeather, onChange: setObsWeather, options: OBS_WEATHER_OPTIONS }),
+          e(OptionalSelect, { label:t("field.sunlightEffect"), value: obsSunlight, onChange: setObsSunlight, options: OBS_SUNLIGHT_OPTIONS })
+        ),
+
+        e("div", { className:"modal-field-group" },
+          e("div", { className:"modal-field-group-label" }, t("obs.groupHealth")),
+          e(OptionalSelect, { label:t("field.leafColour"), value: obsLeafColor, onChange: setObsLeafColor, options: OBS_LEAF_COLOR_OPTIONS }),
+          e(OptionalSelect, { label:t("field.pestsSeen"), value: obsPest, onChange: setObsPest, options: OBS_PEST_OPTIONS }),
+          e(OptionalSelect, { label:t("field.diseaseSymptoms"), value: obsDisease, onChange: setObsDisease, options: OBS_DISEASE_OPTIONS }),
+          e(OptionalSelect, { label:t("field.topsStatus"), value: obsTops, onChange: setObsTops, options: OBS_TOPS_OPTIONS })
+        ),
+
+        e("div", { className:"modal-field-group" },
+          e("div", { className:"modal-field-group-label" }, t("obs.groupStorage")),
+          e(OptionalSelect, { label:t("field.curingStatus"), value: obsCuring, onChange: setObsCuring, options: OBS_CURING_OPTIONS })
+        ),
+
         e("div", { className:"field" }, e("label", null, t("field.notes")),
           e("textarea", { value: obsNotes, placeholder:t("field.notesPlaceholder"), onChange: function(ev){ setObsNotes(ev.target.value); } })),
         e("div", { className:"modal-actions" },
@@ -4088,10 +4537,14 @@ function App(){
       )
     ),
 
+    purchaseOpen && e(PurchaseModal, { onClose: function(){ setPurchaseOpen(false); }, onSave: addPurchase }),
+    adjustOpen && e(StockAdjustmentModal, { onClose: function(){ setAdjustOpen(false); }, onSave: addStockAdjustment }),
+
     e("div", { className:"bottom-nav" },
       e("div", { className:"bottom-nav-inner" },
         e("button", { className:"nav-btn" + (tab==="home" ? " active" : ""), onClick: function(){ setTab("home"); } }, IconHome(tab==="home"), e("span", null, t("nav.home"))),
         e("button", { className:"nav-btn" + (tab==="why" ? " active" : ""), onClick: function(){ setTab("why"); } }, IconWhy(tab==="why"), e("span", null, t("nav.why"))),
+        e("button", { className:"nav-btn" + (tab==="finance" ? " active" : ""), onClick: function(){ setTab("finance"); } }, IconFinance(tab==="finance"), e("span", null, t("nav.finance"))),
         e("button", { className:"nav-btn" + (tab==="history" ? " active" : ""), onClick: function(){ setTab("history"); } }, IconHistory(tab==="history"), e("span", null, t("nav.history"))),
         e("button", { className:"nav-btn" + (tab==="settings" ? " active" : ""), onClick: function(){ setTab("settings"); } }, IconSettings(tab==="settings"), e("span", null, t("nav.settings")))
       )
