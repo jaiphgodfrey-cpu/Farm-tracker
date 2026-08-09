@@ -435,6 +435,11 @@ const translations = {
     "finance.noStock": "No stock tracked yet. Log a purchase or your current stock to get started.",
     "finance.logPurchase": "+ Log a purchase", "finance.logAdjustment": "+ Set stock / adjustment",
     "finance.brand": "Brand (optional)", "finance.supplier": "Supplier (optional)",
+    "finance.resourceType": "Type", "finance.resourceType.fertilizer": "Fertilizer", "finance.resourceType.spray": "Spray / Pesticide",
+    "finance.resourceType.equipment": "Equipment", "finance.resourceType.other": "Other",
+    "finance.item": "Item", "finance.itemName": "Item name", "finance.itemNamePlaceholder": "e.g. Sprayer pump",
+    "finance.unit": "Unit", "finance.quantity": "Quantity", "finance.enterItemName": "Enter an item name.",
+    "finance.reason.used": "Used",
     "finance.reason": "Reason", "finance.reason.opening_stock": "Opening stock (what I already have)",
     "finance.reason.spillage": "Spillage", "finance.reason.given_away": "Given away", "finance.reason.other": "Other",
     "finance.openingStockHint": "For fertilizer you already had before tracking stock in this app \u2014 not a purchase, just your true starting point.",
@@ -636,6 +641,11 @@ const translations = {
     "finance.noStock": "Hakuna akiba iliyofuatiliwa bado. Weka manunuzi au akiba yako ya sasa kuanza.",
     "finance.logPurchase": "+ Weka manunuzi", "finance.logAdjustment": "+ Weka akiba / marekebisho",
     "finance.brand": "Chapa (si lazima)", "finance.supplier": "Muuzaji (si lazima)",
+    "finance.resourceType": "Aina", "finance.resourceType.fertilizer": "Mbolea", "finance.resourceType.spray": "Dawa / Viuatilifu",
+    "finance.resourceType.equipment": "Vifaa", "finance.resourceType.other": "Nyingine",
+    "finance.item": "Kitu", "finance.itemName": "Jina la kitu", "finance.itemNamePlaceholder": "mfano: Pampu ya kunyunyizia",
+    "finance.unit": "Kipimo", "finance.quantity": "Kiasi", "finance.enterItemName": "Weka jina la kitu.",
+    "finance.reason.used": "Kimetumika",
     "finance.reason": "Sababu", "finance.reason.opening_stock": "Akiba ya awali (niliyokuwa nayo tayari)",
     "finance.reason.spillage": "Ilimwagika", "finance.reason.given_away": "Nilimpa mtu", "finance.reason.other": "Nyingine",
     "finance.openingStockHint": "Kwa mbolea uliyokuwa nayo kabla ya kufuatilia akiba kwenye programu hii \u2014 si manunuzi, ni sehemu yako halisi ya kuanzia.",
@@ -2144,20 +2154,42 @@ function evaluateFarmEmergenceHistory(events){
 // and is exactly what this avoids. Opening stock (what a farmer already has when they start
 // using this feature) is stored as a stockAdjustment with reason "opening_stock", not a fake
 // purchase — keeps the purchase log honest as a record of things actually bought.
-const STOCK_ADJUSTMENT_REASONS = ["opening_stock", "spillage", "given_away", "other"];
+//
+// Widened beyond fertilizer to any farm input worth restocking (spray/pesticide, equipment,
+// other). Fertilizer and spray reuse their existing fixed dropdowns (FERTILIZER_TYPES,
+// SPRAY_TYPES) so restocking always matches correctly by construction. Equipment/other are
+// free text — normalized (trimmed, lowercased) into `itemKey` for grouping so "Sprayer pump"
+// and "sprayer pump" count as the same item, while `itemLabel` keeps the most recent actual
+// typed casing for display. This normalization is a real, honest limitation: "Sprayer pump" and
+// "Pump, sprayer" still won't match each other — there's no dropdown to guarantee it the way
+// there is for fertilizer/spray.
+// Only fertilizer auto-deducts from application events (spray events don't currently log a
+// quantity at all, so there's nothing to auto-deduct there yet) — spray/equipment/other stock
+// only moves via purchases and adjustments, including a "used" reason for manually logging
+// consumption where there's no automatic event link.
+const RESOURCE_TYPES = ["fertilizer", "spray", "equipment", "other"];
+const STOCK_ADJUSTMENT_REASONS = ["opening_stock", "used", "spillage", "given_away", "other"];
+
+function normalizeItemKey(text){ return (text || "").trim().toLowerCase(); }
 
 function computeInventory(state){
   const stock = {};
-  function ensure(type){ if(!stock[type]) stock[type] = { quantityKg: 0, known: false }; return stock[type]; }
+  function ensure(resourceType, itemKey, itemLabel, unit){
+    const mapKey = resourceType + "::" + itemKey;
+    if(!stock[mapKey]) stock[mapKey] = { resourceType: resourceType, itemKey: itemKey, itemLabel: itemLabel, unit: unit, quantity: 0, known: false };
+    // Keep the most recently seen label/unit for display, in case free-text casing drifted.
+    stock[mapKey].itemLabel = itemLabel; stock[mapKey].unit = unit || stock[mapKey].unit;
+    return stock[mapKey];
+  }
   (state.purchases || []).forEach(function(p){
-    const s = ensure(p.fertilizerType); s.quantityKg += p.quantityKg; s.known = true;
+    const s = ensure(p.resourceType, p.itemKey, p.itemLabel, p.unit); s.quantity += p.quantity; s.known = true;
   });
   (state.stockAdjustments || []).forEach(function(a){
-    const s = ensure(a.fertilizerType); s.quantityKg += a.quantityKg; s.known = true;
+    const s = ensure(a.resourceType, a.itemKey, a.itemLabel, a.unit); s.quantity += a.quantity; s.known = true;
   });
   (state.events || []).forEach(function(ev){
     if(ev.categoryId === "fertilizer" && ev.fertilizerType && ev.quantityKg){
-      ensure(ev.fertilizerType).quantityKg -= ev.quantityKg;
+      ensure("fertilizer", ev.fertilizerType, optionLabel(ev.fertilizerType), "kg").quantity -= ev.quantityKg;
     }
   });
   return stock;
@@ -3515,21 +3547,58 @@ function FertilizerCalculatorModal(props){
 // from the adjustment modal is deliberate: "I bought fertilizer" and "my stock needs correcting"
 // are different farmer actions with different fields (price/brand/supplier only make sense for
 // an actual purchase), even though both ultimately feed the same computeInventory() ledger.
+// Shared resource-type + item picker used by both Purchase and Adjustment modals. Fertilizer
+// and spray reuse their existing fixed dropdowns; equipment/other are free text, normalized on
+// save (see normalizeItemKey) — the picker itself just collects the raw label the farmer typed.
+function ResourceItemPicker(props){
+  const resourceType = props.resourceType, itemLabel = props.itemLabel, unit = props.unit;
+  return e(React.Fragment, null,
+    e("div", { className:"field" }, e("label", null, t("finance.resourceType")),
+      e("select", { value: resourceType, onChange: function(ev){ props.onResourceTypeChange(ev.target.value); } },
+        RESOURCE_TYPES.map(function(rt){ return e("option", { value:rt, key:rt }, t("finance.resourceType." + rt)); }))),
+    (resourceType === "fertilizer" || resourceType === "spray") && e("div", { className:"field" }, e("label", null, t("finance.item")),
+      e("select", { value: itemLabel, onChange: function(ev){ props.onItemLabelChange(ev.target.value); } },
+        (resourceType === "fertilizer" ? FERTILIZER_TYPES : SPRAY_TYPES).map(function(v){ return e("option", { value:v, key:v }, optionLabel(v)); }))),
+    (resourceType === "equipment" || resourceType === "other") && e("div", { className:"field-row" },
+      e("div", { className:"field" }, e("label", null, t("finance.itemName")),
+        e("input", { value: itemLabel, placeholder: t("finance.itemNamePlaceholder"), onChange: function(ev){ props.onItemLabelChange(ev.target.value); } })),
+      e("div", { className:"field", style:{ maxWidth:"90px" } }, e("label", null, t("finance.unit")),
+        e("input", { value: unit, placeholder:"kg / L / pcs", onChange: function(ev){ props.onUnitChange(ev.target.value); } }))
+    )
+  );
+}
+
+function defaultUnitFor(resourceType){
+  return resourceType === "fertilizer" ? "kg" : resourceType === "spray" ? "L" : "";
+}
+
 function PurchaseModal(props){
-  const [fertilizerType, setFertilizerType] = useState(FERTILIZER_TYPES[0]);
+  const [resourceType, setResourceType] = useState("fertilizer");
+  const [itemLabel, setItemLabel] = useState(FERTILIZER_TYPES[0]);
+  const [unit, setUnit] = useState("kg");
   const [date, setDate] = useState(todayISO());
-  const [quantityKg, setQuantityKg] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [brand, setBrand] = useState("");
   const [supplier, setSupplier] = useState("");
   const [priceTsh, setPriceTsh] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
 
+  function handleResourceTypeChange(rt){
+    setResourceType(rt);
+    setUnit(defaultUnitFor(rt));
+    setItemLabel(rt === "fertilizer" ? FERTILIZER_TYPES[0] : rt === "spray" ? SPRAY_TYPES[0] : "");
+  }
+
   function handleSave(){
-    const q = Number(quantityKg);
-    if(!quantityKg || isNaN(q) || q <= 0){ setError(t("finance.enterValidQty")); return; }
+    const q = Number(quantity);
+    if(!quantity || isNaN(q) || q <= 0){ setError(t("finance.enterValidQty")); return; }
+    if((resourceType === "equipment" || resourceType === "other") && !itemLabel.trim()){ setError(t("finance.enterItemName")); return; }
     props.onSave({
-      id: "purchase" + Date.now(), date: date, fertilizerType: fertilizerType, quantityKg: q,
+      id: "purchase" + Date.now(), date: date, resourceType: resourceType,
+      itemKey: resourceType === "fertilizer" || resourceType === "spray" ? itemLabel : normalizeItemKey(itemLabel),
+      itemLabel: resourceType === "fertilizer" || resourceType === "spray" ? optionLabel(itemLabel) : itemLabel.trim(),
+      quantity: q, unit: unit.trim() || defaultUnitFor(resourceType),
       brand: brand.trim() || undefined, supplier: supplier.trim() || undefined,
       priceTsh: priceTsh.trim() ? Number(priceTsh) : undefined, notes: notes.trim() || undefined
     });
@@ -3541,11 +3610,12 @@ function PurchaseModal(props){
       e("h2", null, t("finance.logPurchase")),
       e("div", { className:"field" }, e("label", null, t("field.date")),
         e("input", { type:"date", value: date, onChange: function(ev){ setDate(ev.target.value); } })),
-      e("div", { className:"field" }, e("label", null, t("field.fertilizerType")),
-        e("select", { value: fertilizerType, onChange: function(ev){ setFertilizerType(ev.target.value); } },
-          FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); }))),
-      e("div", { className:"field" }, e("label", null, t("field.quantityKg")),
-        e("input", { type:"number", min:"0", inputMode:"decimal", value: quantityKg, placeholder:"e.g. 50", onChange: function(ev){ setQuantityKg(ev.target.value); } })),
+      e(ResourceItemPicker, {
+        resourceType: resourceType, itemLabel: itemLabel, unit: unit,
+        onResourceTypeChange: handleResourceTypeChange, onItemLabelChange: setItemLabel, onUnitChange: setUnit
+      }),
+      e("div", { className:"field" }, e("label", null, t("finance.quantity") + " (" + (unit || defaultUnitFor(resourceType)) + ")"),
+        e("input", { type:"number", min:"0", inputMode:"decimal", value: quantity, placeholder:"e.g. 50", onChange: function(ev){ setQuantity(ev.target.value); } })),
       e("div", { className:"field-row" },
         e("div", { className:"field" }, e("label", null, t("finance.brand")),
           e("input", { value: brand, onChange: function(ev){ setBrand(ev.target.value); } })),
@@ -3567,27 +3637,41 @@ function PurchaseModal(props){
 
 // Stock adjustment modal — covers opening stock (what a farmer already had before using this
 // feature, stored as a positive adjustment rather than a fake purchase, keeping the purchase
-// log honest as a record of things actually bought), plus spillage/given-away/other corrections.
-// Quantity is signed: positive adds to stock, negative removes.
+// log honest as a record of things actually bought), plus used/spillage/given-away/other
+// corrections. Quantity is signed: positive adds to stock, negative removes. For non-fertilizer
+// resources this is also the ONLY way stock decreases (no automatic application-event link yet
+// for spray/equipment/other), so "Used" exists specifically to cover that.
 function StockAdjustmentModal(props){
-  const [fertilizerType, setFertilizerType] = useState(FERTILIZER_TYPES[0]);
+  const [resourceType, setResourceType] = useState("fertilizer");
+  const [itemLabel, setItemLabel] = useState(FERTILIZER_TYPES[0]);
+  const [unit, setUnit] = useState("kg");
   const [date, setDate] = useState(todayISO());
   const [reason, setReason] = useState(STOCK_ADJUSTMENT_REASONS[0]);
-  const [quantityKg, setQuantityKg] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
 
   const isOpeningStock = reason === "opening_stock";
 
+  function handleResourceTypeChange(rt){
+    setResourceType(rt);
+    setUnit(defaultUnitFor(rt));
+    setItemLabel(rt === "fertilizer" ? FERTILIZER_TYPES[0] : rt === "spray" ? SPRAY_TYPES[0] : "");
+  }
+
   function handleSave(){
-    const raw = Number(quantityKg);
-    if(!quantityKg || isNaN(raw) || raw === 0){ setError(t("finance.enterValidQty")); return; }
-    // Opening stock and "found extra" are always a positive addition; spillage/given-away are
-    // always a removal — the farmer enters a plain positive number either way, sign is implicit
-    // in the reason, so they never have to think about minus signs.
-    const signed = (reason === "spillage" || reason === "given_away") ? -Math.abs(raw) : Math.abs(raw);
+    const raw = Number(quantity);
+    if(!quantity || isNaN(raw) || raw === 0){ setError(t("finance.enterValidQty")); return; }
+    if((resourceType === "equipment" || resourceType === "other") && !itemLabel.trim()){ setError(t("finance.enterItemName")); return; }
+    // Opening stock and "found extra" are always a positive addition; used/spillage/given-away
+    // are always a removal — the farmer enters a plain positive number either way, sign is
+    // implicit in the reason, so they never have to think about minus signs.
+    const signed = (reason === "spillage" || reason === "given_away" || reason === "used") ? -Math.abs(raw) : Math.abs(raw);
     props.onSave({
-      id: "adj" + Date.now(), date: date, fertilizerType: fertilizerType, quantityKg: signed,
+      id: "adj" + Date.now(), date: date, resourceType: resourceType,
+      itemKey: resourceType === "fertilizer" || resourceType === "spray" ? itemLabel : normalizeItemKey(itemLabel),
+      itemLabel: resourceType === "fertilizer" || resourceType === "spray" ? optionLabel(itemLabel) : itemLabel.trim(),
+      quantity: signed, unit: unit.trim() || defaultUnitFor(resourceType),
       reason: reason, notes: notes.trim() || undefined
     });
     props.onClose();
@@ -3602,11 +3686,12 @@ function StockAdjustmentModal(props){
       isOpeningStock && e("div", { className:"hint", style:{ marginBottom:"8px" } }, t("finance.openingStockHint")),
       e("div", { className:"field" }, e("label", null, t("field.date")),
         e("input", { type:"date", value: date, onChange: function(ev){ setDate(ev.target.value); } })),
-      e("div", { className:"field" }, e("label", null, t("field.fertilizerType")),
-        e("select", { value: fertilizerType, onChange: function(ev){ setFertilizerType(ev.target.value); } },
-          FERTILIZER_TYPES.map(function(ft){ return e("option", { value:ft, key:ft }, optionLabel(ft)); }))),
-      e("div", { className:"field" }, e("label", null, t("field.quantityKg")),
-        e("input", { type:"number", min:"0", inputMode:"decimal", value: quantityKg, placeholder:"e.g. 5", onChange: function(ev){ setQuantityKg(ev.target.value); } })),
+      e(ResourceItemPicker, {
+        resourceType: resourceType, itemLabel: itemLabel, unit: unit,
+        onResourceTypeChange: handleResourceTypeChange, onItemLabelChange: setItemLabel, onUnitChange: setUnit
+      }),
+      e("div", { className:"field" }, e("label", null, t("finance.quantity") + " (" + (unit || defaultUnitFor(resourceType)) + ")"),
+        e("input", { type:"number", min:"0", inputMode:"decimal", value: quantity, placeholder:"e.g. 5", onChange: function(ev){ setQuantity(ev.target.value); } })),
       e("div", { className:"field" }, e("label", null, t("field.notes")),
         e("input", { value: notes, placeholder: t("field.notesPlaceholder"), onChange: function(ev){ setNotes(ev.target.value); } })),
       error && e("div", { className:"hint", style:{ color:"var(--status-danger)", marginBottom:"8px" } }, error),
@@ -3629,12 +3714,16 @@ function FinanceScreen(props){
   const [confirmDelete, setConfirmDelete] = useState(null); // { kind:"purchase"|"adjustment", id }
 
   const inventory = useMemo(function(){ return computeInventory(state); }, [state.purchases, state.stockAdjustments, state.events]);
-  const trackedTypes = Object.keys(inventory).filter(function(k){ return inventory[k].known; })
-    .sort(function(a,b){ return a.localeCompare(b); });
+  const trackedKeys = Object.keys(inventory).filter(function(k){ return inventory[k].known; })
+    .sort(function(a,b){
+      const sa = inventory[a], sb = inventory[b];
+      if(sa.resourceType !== sb.resourceType) return RESOURCE_TYPES.indexOf(sa.resourceType) - RESOURCE_TYPES.indexOf(sb.resourceType);
+      return sa.itemLabel.localeCompare(sb.itemLabel);
+    });
 
   const ledger = useMemo(function(){
-    const purchases = (state.purchases || []).map(function(p){ return { kind:"purchase", id:p.id, date:p.date, fertilizerType:p.fertilizerType, quantityKg:p.quantityKg, detail:p }; });
-    const adjustments = (state.stockAdjustments || []).map(function(a){ return { kind:"adjustment", id:a.id, date:a.date, fertilizerType:a.fertilizerType, quantityKg:a.quantityKg, detail:a }; });
+    const purchases = (state.purchases || []).map(function(p){ return { kind:"purchase", id:p.id, date:p.date, resourceType:p.resourceType, itemLabel:p.itemLabel, unit:p.unit, quantity:p.quantity, detail:p }; });
+    const adjustments = (state.stockAdjustments || []).map(function(a){ return { kind:"adjustment", id:a.id, date:a.date, resourceType:a.resourceType, itemLabel:a.itemLabel, unit:a.unit, quantity:a.quantity, detail:a }; });
     return purchases.concat(adjustments).sort(function(x,y){ return y.date.localeCompare(x.date); });
   }, [state.purchases, state.stockAdjustments]);
 
@@ -3649,17 +3738,17 @@ function FinanceScreen(props){
     e("div", { className:"header" }, e("div", { className:"farmname" }, t("finance.title"))),
 
     e("div", { className:"section-label" }, t("finance.currentStock") ),
-    trackedTypes.length === 0
+    trackedKeys.length === 0
       ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, t("finance.noStock")))
-      : e("div", { style:{ margin:"0 16px" } }, trackedTypes.map(function(type){
-          const s = inventory[type];
-          const low = s.quantityKg <= 0;
-          return e("div", { className:"bed-row", key: type },
+      : e("div", { style:{ margin:"0 16px" } }, trackedKeys.map(function(key){
+          const s = inventory[key];
+          const low = s.quantity <= 0;
+          return e("div", { className:"bed-row", key: key },
             e("div", null,
-              e("div", { style:{ fontSize:"13px", fontWeight:700 } }, optionLabel(type)),
-              low && e("div", { className:"hint", style:{ color:"var(--status-danger)" } }, t("finance.outOfStock"))
+              e("div", { style:{ fontSize:"13px", fontWeight:700 } }, s.itemLabel),
+              e("div", { className:"hint" }, t("finance.resourceType." + s.resourceType) + (low ? " \u00b7 " + t("finance.outOfStock") : "")),
             ),
-            e("div", { style:{ fontSize:"15px", fontWeight:700, color: low ? "var(--status-danger)" : "var(--text-primary)" } }, s.quantityKg.toFixed(1) + " kg")
+            e("div", { style:{ fontSize:"15px", fontWeight:700, color: low ? "var(--status-danger)" : "var(--text-primary)" } }, s.quantity.toFixed(1) + " " + (s.unit || ""))
           );
         })),
 
@@ -3669,16 +3758,16 @@ function FinanceScreen(props){
     ledger.length === 0
       ? e("div", { className:"empty-state", style:{ margin:"0 20px" } }, e("div", null, t("finance.noActivity")))
       : e("div", { style:{ margin:"0 16px" } }, ledger.map(function(item){
-          const sign = item.quantityKg >= 0 ? "+" : "";
+          const sign = item.quantity >= 0 ? "+" : "";
           const desc = item.kind === "purchase"
             ? [item.detail.brand, item.detail.supplier].filter(Boolean).join(" \u00b7 ") || t("finance.purchased")
             : t("finance.reason." + item.detail.reason);
           return e("div", { className:"bed-row", key: item.kind + item.id, onClick: function(){ setConfirmDelete({ kind:item.kind, id:item.id }); }, style:{ cursor:"pointer" } },
             e("div", null,
-              e("div", { style:{ fontSize:"13px", fontWeight:700 } }, optionLabel(item.fertilizerType) + " \u00b7 " + relativeLabel(daysSince(item.date))),
+              e("div", { style:{ fontSize:"13px", fontWeight:700 } }, item.itemLabel + " \u00b7 " + relativeLabel(daysSince(item.date))),
               e("div", { className:"hint" }, desc)
             ),
-            e("div", { style:{ fontSize:"14px", fontWeight:700, color: item.quantityKg >= 0 ? "var(--accent)" : "var(--status-danger)" } }, sign + item.quantityKg.toFixed(1) + " kg")
+            e("div", { style:{ fontSize:"14px", fontWeight:700, color: item.quantity >= 0 ? "var(--accent)" : "var(--status-danger)" } }, sign + item.quantity.toFixed(1) + " " + (item.unit || ""))
           );
         })),
 
