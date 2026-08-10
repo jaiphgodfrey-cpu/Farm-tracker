@@ -442,6 +442,7 @@ const translations = {
     "finance.stockCheck": "Stock check", "finance.inStock": "In stock", "finance.notTracked": "Not tracked",
     "finance.stockNotTrackedHint": "You haven't logged a purchase or opening stock for this fertilizer yet, so the app can't tell how much you already have.",
     "finance.stockSufficient": "Stock is sufficient", "finance.shortfall": "Shortfall",
+    "finance.stockLowSuffix": "stock low",
     "finance.logPurchaseHint": "Log a purchase from Settings \u2192 Actions to update this.",
     "finance.stockNotTrackedShort": "Stock not tracked for this fertilizer yet.",
     "finance.recordedStock": "Recorded stock", "finance.thisIsMoreThanRecorded": "This is",
@@ -655,6 +656,7 @@ const translations = {
     "finance.stockCheck": "Ukaguzi wa akiba", "finance.inStock": "Iliyopo kwenye akiba", "finance.notTracked": "Haijafuatiliwa",
     "finance.stockNotTrackedHint": "Bado hujaweka manunuzi au akiba ya awali ya mbolea hii, hivyo programu haiwezi kujua kiasi ulichonacho tayari.",
     "finance.stockSufficient": "Akiba inatosha", "finance.shortfall": "Upungufu",
+    "finance.stockLowSuffix": "akiba iko chini",
     "finance.logPurchaseHint": "Weka manunuzi kutoka Mipangilio \u2192 Vitendo ili kusasisha hii.",
     "finance.stockNotTrackedShort": "Akiba ya mbolea hii bado haijafuatiliwa.",
     "finance.recordedStock": "Akiba iliyoandikwa", "finance.thisIsMoreThanRecorded": "Hii ni",
@@ -2561,14 +2563,20 @@ function HomeScreen(state){
   // Fertilizer window — the single current window (never more than one at once). Escalates
   // from Schedule to Alerts once within 2 days of closing; vanishes entirely once the window
   // fully closes (a miss is recorded on Why instead — see evaluateFertilizerWindows).
+  // Stock-aware: appends a short "stock low" suffix when known stock is at or below zero for
+  // the window's tied fertilizerType — deliberately minimal on Home (full detail on Why),
+  // and deliberately silent when stock is simply untracked, never treating that as "zero".
   if(fertWindowState.current){
     const fw = fertWindowState.current;
     const cls = fw.urgency === "closingSoon" ? "advisory-card threat-critical" : fw.urgency === "open" ? "advisory-card partial" : "advisory-card";
-    const subText = fw.urgency === "closingSoon"
-      ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")) + ". " + t("why.tapToSeeWhy")
+    const stockEntry = fw.window.fertilizerType ? homeInventory["fertilizer::" + fw.window.fertilizerType] : null;
+    const stockLow = stockEntry && stockEntry.known && stockEntry.quantity <= 0;
+    const stockSuffix = stockLow ? " \u00b7 " + t("finance.stockLowSuffix") : "";
+    const subText = (fw.urgency === "closingSoon"
+      ? (fw.daysToClose === 0 ? t("fertwindow.closesToday") : t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days"))
       : fw.urgency === "open"
-        ? t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days") + ". " + t("why.tapToSeeWhy")
-        : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days") + ". " + t("why.tapToSeeWhy");
+        ? t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")
+        : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days")) + stockSuffix + ". " + t("why.tapToSeeWhy");
     const card = e("div", { key:"fertwindow-" + fw.windowNumber, className: cls, onClick: function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }, onKeyDown: onActivateKey(function(){ state.onGoToWhy("fertwindow-" + fw.windowNumber); }), role:"button", tabIndex:0 },
       e("div", { style:{ minWidth:0, flex:1 } },
         e("div", { className:"advisory-title" }, fw.window.label),
@@ -2576,7 +2584,7 @@ function HomeScreen(state){
       ),
       e("span", { className:"chev" }, "›")
     );
-    if(fw.urgency === "closingSoon") alertCards.push(card); else scheduleCards.push(card);
+    if(fw.urgency === "closingSoon" || stockLow) alertCards.push(card); else scheduleCards.push(card);
   }
 
   return e("div", { className:"home-wrap" },
@@ -3007,9 +3015,15 @@ function WhyFertilizerWindowCard(props){
       ? t("fertwindow.openCloses") + " " + fw.daysToClose + " " + t("ev.days")
       : t("fertwindow.opensIn") + " " + fw.daysToOpen + " " + t("ev.days");
   const hasSource = fw.window.sourceKeys && fw.window.sourceKeys.length > 0;
+  const stockEntry = fw.window.fertilizerType && props.inventory ? props.inventory["fertilizer::" + fw.window.fertilizerType] : null;
   return e(WhyCard, { id:"why-fertwindow-section", title: fw.window.label, badgeClass: badgeClass, badgeText: badgeText, summaryLine: t("why.teaserFertWindow") },
     e("div", { className:"hint" }, daysLine + " (" + t("fertwindow.windowLabel") + " " + fw.window.startDay + "\u2013" + fw.window.endDay + ")."),
     e("div", { className:"hint", style:{ marginTop:"8px" } }, fw.window.guidance),
+    e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("finance.stockCheck")),
+    (stockEntry && stockEntry.known)
+      ? e("div", { className:"hint", style: stockEntry.quantity <= 0 ? { color:"var(--status-warning)" } : undefined },
+          t("finance.recordedStock") + ": " + stockEntry.quantity.toFixed(1) + " kg" + (stockEntry.quantity <= 0 ? " \u2014 " + t("finance.stockLowSuffix") : "") + ".")
+      : e("div", { className:"hint" }, t("finance.stockNotTrackedShort")),
     e("div", { className:"why-subhead", style:{ marginTop:"14px", marginBottom:"8px" } }, t("why.source")),
     hasSource
       ? e(WhySourceLinks, { sourceKeys: fw.window.sourceKeys })
@@ -3105,6 +3119,7 @@ function WhyScreen(props){
   const fertWindowState = useMemo(function(){
     return evaluateFertilizerWindows(seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [seasonPhase.heroPhase, seasonPhase.transplantEvent, state.events, seasonPhase.sowingEvent]);
+  const whyInventory = useMemo(function(){ return computeInventory(state); }, [state.purchases, state.stockAdjustments, state.events]);
   const latestFoliarEvent = useMemo(function(){
     return findLatestFoliarSprayEvent(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null);
   }, [state.events, seasonPhase.sowingEvent]);
@@ -3163,7 +3178,7 @@ function WhyScreen(props){
           farmHistory &&
             e("div", { style:{ margin:"0 20px 12px" } }, e(WhyFarmHistoryCard, { history: farmHistory })),
           fertWindowState.current &&
-            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyFertilizerWindowCard, { fertWindow: fertWindowState.current })),
+            e("div", { style:{ margin:"0 20px 12px" } }, e(WhyFertilizerWindowCard, { fertWindow: fertWindowState.current, inventory: whyInventory })),
           fertWindowState.missed.map(function(w){
             return e("div", { key:"fertwindow-missed-" + w.windowNumber, style:{ margin:"0 20px 12px" } }, e(WhyMissedFertilizerWindowCard, { window: w }));
           }),
