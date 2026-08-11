@@ -2256,7 +2256,7 @@ function fertilizersIncompatible(typeA, typeB){
   return (a.containsPhosphate && b.containsCalcium) || (a.containsCalcium && b.containsPhosphate);
 }
 
-function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent, heroPhase){
+function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent, heroPhase, transplantEvent){
   const inSeason = function(ev){ return !seasonAnchorDate || ev.date >= seasonAnchorDate; };
   const fertEvents = events.filter(function(ev){ return ev.categoryId === "fertilizer" && ev.fertilizerType && inSeason(ev); })
     .sort(function(a,b){ return a.date.localeCompare(b.date); });
@@ -2274,7 +2274,23 @@ function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent, heroPha
     // exposed either handled it or didn't; there's nothing left to act on). Caught via Kimi's
     // review: this used to keep showing on Home indefinitely after transplanting, with no way
     // to tell it was a closed, past-phase concern rather than something current.
-    if(profile && profile.riskyNearSeedlings && sowingEvent && ev.date > sowingEvent.date && heroPhase === "germination"){
+    const nurseryRisk = profile && profile.riskyNearSeedlings && sowingEvent && ev.date > sowingEvent.date && heroPhase === "germination";
+
+    // Post-transplant version of the same risk — same chemistry (ammonia/salt burn), just near
+    // fresh transplant roots instead of nursery seedlings. Previously entirely invisible: a
+    // farmer who transplants purchased seedlings (never logs a sowing event at all) or applies
+    // a risky fertilizer shortly after transplanting got zero protection either way, since the
+    // nursery check above requires both a sowing event and germination phase. Reuses the same
+    // 10-day window as the NPK fertilizer reminder rather than inventing a separate arbitrary
+    // threshold, so the app isn't running two different "how long is risky" numbers. Caught via
+    // a third-party AI review (P0), verified against the real code before fixing.
+    let transplantRisk = false;
+    if(profile && profile.riskyNearSeedlings && transplantEvent && heroPhase === "growing"){
+      const dpt = daysBetween(transplantAnchorDate(transplantEvent), ev.date);
+      transplantRisk = dpt != null && dpt >= 0 && dpt <= 10;
+    }
+
+    if(nurseryRisk){
       flags.push({
         id: "fertilizer_unsafe_near_seedlings",
         label: sw ? (name + " iliwekwa karibu na miche michanga") : (ev.fertilizerType + " applied near young seedlings"),
@@ -2285,6 +2301,20 @@ function evaluateFertilizerSafety(events, seasonAnchorDate, sowingEvent, heroPha
         avoid: sw
           ? ("Usiweke " + name + " moja kwa moja kwenye tuta la kitalu au karibu na mizizi ya miche. Ikitumika, iwe imechanganywa vizuri kwenye udongo muda mrefu kabla ya kupanda, umbali wa sentimita kadhaa kutoka mahali mbegu itakapowekwa.")
           : ("Don't apply " + ev.fertilizerType + " directly to a nursery bed or close to seedling roots. If used at all, it belongs mixed into the soil well before sowing, several cm away from where the seed goes."),
+        sourceKeys: ["MCN1", "FCN1"],
+        eventDate: ev.date
+      });
+    } else if(transplantRisk){
+      flags.push({
+        id: "fertilizer_unsafe_near_transplant",
+        label: sw ? (name + " iliwekwa karibu na miche mipya iliyohamishwa") : (ev.fertilizerType + " applied near a fresh transplant"),
+        severity: "critical",
+        message: sw
+          ? (name + " hutoa hewa ya amonia na/au chumvi kali karibu na mizizi, jambo linaloweza kudhuru mizizi ya miche iliyohamishwa hivi karibuni ambayo bado inajijenga.")
+          : (ev.fertilizerType + " releases ammonia and/or a strong salt effect close to roots, which can damage the still-establishing roots of a recently transplanted seedling."),
+        avoid: sw
+          ? ("Ikiwa imehamishwa hivi karibuni, subiri hadi mizizi ijiimarishe kabla ya kuweka " + name + " karibu na shina, au itumie kwa umbali zaidi kutoka kwenye mzizi.")
+          : ("If transplanting was recent, wait for roots to establish before applying " + ev.fertilizerType + " close to the base, or keep it further from the root zone."),
         sourceKeys: ["MCN1", "FCN1"],
         eventDate: ev.date
       });
@@ -2452,8 +2482,8 @@ function HomeScreen(state){
     return evaluateThreatMap(heroPhase, heroStageLabel, state.observations, sowingEvent ? sowingEvent.date : null);
   }, [heroPhase, heroStageLabel, state.observations, sowingEvent]);
   const fertilizerSafetyFlags = useMemo(function(){
-    return evaluateFertilizerSafety(state.events, sowingEvent ? sowingEvent.date : null, sowingEvent, heroPhase).filter(function(f){ return f.severity === "critical" || f.severity === "high"; });
-  }, [state.events, sowingEvent, heroPhase]);
+    return evaluateFertilizerSafety(state.events, sowingEvent ? sowingEvent.date : null, sowingEvent, heroPhase, transplantEvent).filter(function(f){ return f.severity === "critical" || f.severity === "high"; });
+  }, [state.events, sowingEvent, heroPhase, transplantEvent]);
   const nurseryPace = useMemo(function(){
     return heroPhase === "germination" ? evaluateNurseryPace(sowingEvent, state.observations) : null;
   }, [heroPhase, sowingEvent, state.observations]);
@@ -3106,7 +3136,7 @@ function WhyScreen(props){
     .sort(function(a, b){ return daysSince(latestByCat[b].date) - daysSince(latestByCat[a].date); });
   const guardrailFlags = useMemo(function(){
     const timing = evaluateGuardrails(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.transplantEvent, seasonPhase.harvestEvent);
-    const fertSafety = evaluateFertilizerSafety(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.sowingEvent, seasonPhase.heroPhase);
+    const fertSafety = evaluateFertilizerSafety(state.events, seasonPhase.sowingEvent ? seasonPhase.sowingEvent.date : null, seasonPhase.sowingEvent, seasonPhase.heroPhase, seasonPhase.transplantEvent);
     return fertSafety.concat(timing);
   }, [state.events, seasonPhase.sowingEvent, seasonPhase.transplantEvent, seasonPhase.harvestEvent, seasonPhase.heroPhase]);
   const nurseryPace = useMemo(function(){
